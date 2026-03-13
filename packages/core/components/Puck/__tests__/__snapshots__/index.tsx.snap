@@ -178,6 +178,13 @@ exports[`Puck should generate the correct state on mount 1`] = `
   },
   "onAction": undefined,
   "overrides": {},
+  "pageDocument": {
+    "blocks": {},
+    "root": {
+      "props": {},
+    },
+    "rootBlockIds": [],
+  },
   "pendingLoadTimeouts": {},
   "permissions": {
     "cache": {},

@@ -7,6 +7,9 @@ import { getIdsForParent } from "../../lib/data/get-ids-for-parent";
 import { walkTree } from "../../lib/data/walk-tree";
 import { generateId } from "../../lib/generate-id";
 
+// Not yet migrated to PageDocument — uses walkTree for nested slot-in-array
+// handling that the CRDT layer doesn't model yet. syncDocFromState in dispatch
+// keeps the Y.Doc in sync after this runs.
 export const replaceAction = <UserData extends Data>(
   state: PrivateAppState<UserData>,
   action: ReplaceAction<UserData>,

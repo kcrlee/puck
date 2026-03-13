@@ -1,62 +1,28 @@
 import { Data } from "../../types";
-import { remove } from "../../lib/data/remove";
-import { getItem } from "../../lib/data/get-item";
 import { RemoveAction } from "../actions";
 import { AppStore } from "../../store";
 import { PrivateAppState } from "../../types/Internal";
-import { walkAppState } from "../../lib/data/walk-app-state";
+import { getBlockIdAtIndex } from "../../crdt/dispatch";
+import { materializeAppState } from "../../crdt/compat";
 
 export const removeAction = <UserData extends Data>(
   state: PrivateAppState<UserData>,
   action: RemoveAction,
   appStore: AppStore
-) => {
-  const item = getItem({ index: action.index, zone: action.zone }, state)!;
+): PrivateAppState<UserData> => {
+  const doc = appStore.pageDocument;
 
-  // Gather related
-  const nodesToDelete = Object.entries(state.indexes.nodes).reduce<string[]>(
-    (acc, [nodeId, nodeData]) => {
-      const pathIds = nodeData.path.map((p) => p.split(":")[0]);
-      if (pathIds.includes(item.props.id)) {
-        return [...acc, nodeId];
-      }
+  // Resolve block ID from zone compound + index
+  const blockId = getBlockIdAtIndex(doc, action.zone, action.index);
+  if (!blockId) return state;
 
-      return acc;
-    },
-    [item.props.id]
-  );
+  // Remove block (and all children) via PageDocument
+  doc.removeBlock(blockId);
 
-  const newState = walkAppState<UserData>(
-    state,
-    appStore.config,
-    (content, zoneCompound) => {
-      if (zoneCompound === action.zone) {
-        return remove(content, action.index);
-      }
-
-      return content;
-    }
-  );
-
-  Object.keys(newState.data.zones || {}).forEach((zoneCompound) => {
-    const parentId = zoneCompound.split(":")[0];
-
-    if (nodesToDelete.includes(parentId) && newState.data.zones) {
-      delete newState.data.zones[zoneCompound];
-    }
-  });
-
-  Object.keys(newState.indexes.zones).forEach((zoneCompound) => {
-    const parentId = zoneCompound.split(":")[0];
-
-    if (nodesToDelete.includes(parentId)) {
-      delete newState.indexes.zones[zoneCompound];
-    }
-  });
-
-  nodesToDelete.forEach((id) => {
-    delete newState.indexes.nodes[id];
-  });
-
-  return newState;
+  // Materialize new state from Y.Doc
+  return materializeAppState(
+    doc,
+    state.ui,
+    appStore.config
+  ) as PrivateAppState<UserData>;
 };

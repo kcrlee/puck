@@ -4,6 +4,8 @@ import { AppStore } from "../../store";
 import { PrivateAppState } from "../../types/Internal";
 import { walkAppState } from "../../lib/data/walk-app-state";
 
+// Not yet migrated to PageDocument — root props with slot fields need
+// special handling. syncDocFromState in dispatch keeps the Y.Doc in sync.
 export const replaceRootAction = <UserData extends Data>(
   state: PrivateAppState<UserData>,
   action: ReplaceRootAction<UserData>,

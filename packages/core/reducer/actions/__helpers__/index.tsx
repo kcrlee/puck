@@ -9,6 +9,7 @@ import { PrivateAppState } from "../../../types/Internal";
 import { stripSlots } from "../../../lib/data/strip-slots";
 import { Reducer } from "react";
 import { flattenNode } from "../../../lib/data/flatten-node";
+import { syncDocFromState } from "../../../crdt/sync";
 
 jest.mock("../../../lib/generate-id");
 
@@ -148,6 +149,9 @@ export const testSetup = () => {
 
     appStore.setState(newStore, true);
 
+    // Set config on the PageDocument so toPuckData/materializeAppState work
+    appStore.getState().pageDocument.config = config;
+
     _reducer = createReducer({ appStore: newStore });
 
     let counter = 0;
@@ -156,6 +160,15 @@ export const testSetup = () => {
   };
 
   beforeEach(beforeEachFn);
+
+  // Ensure the PageDocument matches the state before each reducer call.
+  // This is needed because tests construct states inline (not through dispatch),
+  // so the doc may be out of sync. After all actions are migrated to PageDocument-first,
+  // the sync-before will be a no-op (doc will already be in sync from the previous action).
+  const syncDoc = (state: PrivateAppState) => {
+    const doc = appStore.getState().pageDocument;
+    syncDocFromState(doc, state.data, config);
+  };
 
   const executeSequence = (
     initialState: PrivateAppState<UserData>,
@@ -166,6 +179,7 @@ export const testSetup = () => {
     actions.forEach((actionFn) => {
       const action = actionFn(currentState);
 
+      syncDoc(currentState);
       currentState = _reducer(
         currentState,
         action
@@ -175,8 +189,10 @@ export const testSetup = () => {
     return currentState;
   };
 
-  const reducer = (state: PrivateAppState, action: PuckAction) =>
-    _reducer(state, action);
+  const reducer = (state: PrivateAppState, action: PuckAction) => {
+    syncDoc(state);
+    return _reducer(state, action);
+  };
 
   return { reducer, executeSequence, config };
 };

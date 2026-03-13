@@ -37,6 +37,8 @@ import { generateId } from "../lib/generate-id";
 import { defaultAppState } from "./default-app-state";
 import { FieldTransforms } from "../types/API/FieldTransforms";
 import type { Editor } from "@tiptap/react";
+import { PageDocument } from "../crdt/PageDocument";
+import { syncDocFromState } from "../crdt/sync";
 
 export { defaultAppState };
 
@@ -90,6 +92,7 @@ export type AppStore<
   history: HistorySlice;
   nodes: NodesSlice;
   permissions: PermissionsSlice;
+  pageDocument: PageDocument;
   fieldTransforms: FieldTransforms;
   currentRichText?: {
     inlineComponentId?: string;
@@ -106,8 +109,18 @@ const defaultPageFields: Record<string, Field> = {
   title: { type: "text" },
 };
 
-export const createAppStore = (initialAppStore?: Partial<AppStore>) =>
-  create<AppStore>()(
+export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
+  // Create the PageDocument from initial state + config
+  const initialConfig = initialAppStore?.config ?? { components: {} };
+  const initialData = initialAppStore?.state?.data ?? defaultAppState.data;
+  const pageDocument =
+    initialAppStore?.pageDocument ??
+    PageDocument.fromPuckData(initialData, initialConfig);
+
+  // Keep the PageDocument's config in sync
+  pageDocument.config = initialConfig;
+
+  return create<AppStore>()(
     subscribeWithSelector((set, get) => ({
       instanceId: generateId(),
       state: defaultAppState,
@@ -126,6 +139,7 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) =>
       metadata: {},
       fieldTransforms: {},
       ...initialAppStore,
+      pageDocument,
       fields: createFieldsSlice(set, get),
       history: createHistorySlice(set, get),
       nodes: createNodesSlice(set, get),
@@ -155,6 +169,15 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) =>
         set((s) => {
           const { record } = get().history;
 
+          // Ensure Y.Doc is in sync with current state before the reducer runs.
+          // Migrated action handlers (insert, remove, move, duplicate) mutate the
+          // doc directly; non-migrated ones (replace, set, setData) still use
+          // walkAppState and need the post-sync below.
+          if (s.pageDocument && s.state.data) {
+            s.pageDocument.config = s.config;
+            syncDocFromState(s.pageDocument, s.state.data, s.config);
+          }
+
           const dispatch = createReducer({
             record,
             appStore: s,
@@ -167,6 +190,12 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) =>
             : null;
 
           get().onAction?.(action, state, get().state);
+
+          // Sync Y.Doc to match the new state (keeps Y.Doc as mirror for
+          // non-migrated actions that still use walkAppState)
+          if (s.pageDocument && state.data) {
+            syncDocFromState(s.pageDocument, state.data, s.config);
+          }
 
           return { ...s, state, selectedItem };
         }),
@@ -341,6 +370,7 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) =>
       },
     }))
   );
+};
 
 export const appStoreContext = createContext(createAppStore());
 

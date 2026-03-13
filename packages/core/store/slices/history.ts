@@ -1,8 +1,9 @@
 import { AppState, History } from "../../types";
-import { generateId } from "../../lib/generate-id";
 import { AppStore, useAppStoreApi } from "../";
 import { useEffect } from "react";
 import { useHotkey } from "../../lib/use-hotkey";
+import { materializeAppState } from "../../crdt/compat";
+import { getItem } from "../../lib/data/get-item";
 
 export type HistorySlice<D = any> = {
   index: number;
@@ -19,19 +20,6 @@ export type HistorySlice<D = any> = {
   setHistoryIndex: (index: number) => void;
   initialAppState: D;
 };
-
-const EMPTY_HISTORY_INDEX = 0;
-
-function debounce(func: Function, timeout = 300) {
-  let timer: NodeJS.Timeout;
-
-  return (...args: any) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      func(...args);
-    }, timeout);
-  };
-}
 
 export type PuckHistory = {
   back: VoidFunction;
@@ -51,6 +39,7 @@ const tidyState = (state: AppState): AppState => {
         ...state.ui.field,
         focus: null,
       },
+      itemSelector: null,
     },
   };
 };
@@ -59,68 +48,48 @@ export const createHistorySlice = (
   set: (newState: Partial<AppStore>) => void,
   get: () => AppStore
 ): HistorySlice => {
-  const record = debounce((state: AppState) => {
-    const { histories, index } = get().history;
-
-    const history: History = {
-      state,
-      id: generateId("history"),
-    };
-
-    // Don't use setHistories due to callback
-    const newHistories = [...histories.slice(0, index + 1), history];
-
-    set({
-      history: {
-        ...get().history,
-        histories: newHistories,
-        index: newHistories.length - 1,
-      },
-    });
-  }, 250);
-
   return {
     initialAppState: {} as AppState,
-    index: EMPTY_HISTORY_INDEX,
+    index: 0,
     histories: [],
-    hasPast: () => get().history.index > EMPTY_HISTORY_INDEX,
-    hasFuture: () => get().history.index < get().history.histories.length - 1,
-    prevHistory: () => {
-      const { history } = get();
-
-      return history.hasPast() ? history.histories[history.index - 1] : null;
-    },
-    nextHistory: () => {
-      const s = get().history;
-
-      return s.hasFuture() ? s.histories[s.index + 1] : null;
-    },
-    currentHistory: () => get().history.histories[get().history.index],
+    hasPast: () => get().pageDocument.canUndo(),
+    hasFuture: () => get().pageDocument.canRedo(),
+    prevHistory: () => null,
+    nextHistory: () => null,
+    currentHistory: () => ({ id: "current", state: get().state }),
     back: () => {
-      const { history, dispatch } = get();
+      const { pageDocument, state, config } = get();
 
-      if (history.hasPast()) {
-        const state = tidyState(
-          history.prevHistory()?.state || history.initialAppState
+      if (pageDocument.canUndo()) {
+        pageDocument.undo();
+
+        const tidied = tidyState(state);
+        const newState = materializeAppState(
+          pageDocument,
+          tidied.ui,
+          config
         );
 
-        dispatch({
-          type: "set",
-          state,
-        });
-
-        set({ history: { ...history, index: history.index - 1 } });
+        set({ state: newState as any, selectedItem: null });
       }
     },
     forward: () => {
-      const { history, dispatch } = get();
+      const { pageDocument, state, config } = get();
 
-      if (history.hasFuture()) {
-        const state = history.nextHistory()?.state;
+      if (pageDocument.canRedo()) {
+        pageDocument.redo();
 
-        dispatch({ type: "set", state: state ? tidyState(state) : {} });
+        const newState = materializeAppState(
+          pageDocument,
+          state.ui,
+          config
+        );
 
-        set({ history: { ...history, index: history.index + 1 } });
+        const selectedItem = newState.ui.itemSelector
+          ? getItem(newState.ui.itemSelector, newState)
+          : null;
+
+        set({ state: newState as any, selectedItem });
       }
     },
     setHistories: (histories: History[]) => {
@@ -132,7 +101,7 @@ export const createHistorySlice = (
           histories[histories.length - 1]?.state || history.initialAppState,
       });
 
-      set({ history: { ...history, histories, index: histories.length - 1 } });
+      set({ history: { ...get().history, histories, index: histories.length - 1 } });
     },
     setHistoryIndex: (index: number) => {
       const { dispatch, history } = get();
@@ -142,9 +111,10 @@ export const createHistorySlice = (
         state: history.histories[index]?.state || history.initialAppState,
       });
 
-      set({ history: { ...history, index } });
+      set({ history: { ...get().history, index } });
     },
-    record,
+    // No-op: Y.UndoManager tracks changes automatically via local origin
+    record: () => {},
   };
 };
 
