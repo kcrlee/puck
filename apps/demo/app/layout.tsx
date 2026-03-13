@@ -1,5 +1,6 @@
 import "@/core/styles.css";
 import "./styles.css";
+import { ConvexClientProvider } from "../lib/convex-client-provider";
 
 export default function RootLayout({
   children,
@@ -18,7 +19,9 @@ export default function RootLayout({
         )}
       </head>
       <body>
-        <div>{children}</div>
+        <ConvexClientProvider>
+          <div>{children}</div>
+        </ConvexClientProvider>
       </body>
     </html>
   );

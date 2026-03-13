@@ -34,6 +34,7 @@ Migrated all component-level consumers to read from Y.Doc:
 **Y.Doc is now the sole source of truth.** No production code reads `state.data` or `state.indexes`.
 
 Key changes:
+
 - **Reducer gutted**: `storeInterceptor` removed, `replace`/`replaceRoot` rewritten to Y.Doc primitives, `set`/`setData` merge against `toPuckDataCached()`, `registerZone`/`unregisterZone` are no-ops
 - **Dispatch simplified**: No pre-sync, no post-sync, no dirty tracking. Y.Doc is authoritative.
 - **`_docDirty` and `_hasOnChange` flags removed** — no longer needed
@@ -45,6 +46,7 @@ Key changes:
 - **`toPuckDataCached()`** added to PageDocument — version-counter-based cache
 
 Deleted files/utilities:
+
 - `crdt/compat.ts` (materializeAppState)
 - `lib/data/make-state-public.ts`
 - `lib/data/flatten-data.ts`
@@ -54,6 +56,7 @@ Deleted files/utilities:
 - `zoneCache`/`addToZoneCache` from move.ts and register-zone.ts
 
 Retained for backward compat:
+
 - `state.data` on AppStore type — Y.Doc-derived, written for `onAction` callback and test assertions
 - `state.indexes` on AppStore type — always `{ nodes: {}, zones: {} }`
 - `walkAppState` — only in `migrate.ts` (one-time) and test infrastructure
@@ -71,46 +74,71 @@ Retained for backward compat:
 
 ## Phase 6: Convex Sync Provider
 
-Application layer — outside `packages/core`, in the consuming app.
+Application layer in `apps/demo/`. Core package (`packages/core`) has no Convex dependency.
 
-> Ref: [Architecture § Convex Sync Layer](plans/puck-fork-architecture.md#convex-sync-layer) — schema, syncUpdate mutation, getYjsState query
-> Ref: [Architecture § Convex Yjs Provider](plans/puck-fork-architecture.md#convex-yjs-provider) — ConvexYjsProvider class
+> Ref: [Architecture § Convex Sync Layer](plans/puck-fork-architecture.md#convex-sync-layer)
+> Ref: [Architecture § Convex Yjs Provider](plans/puck-fork-architecture.md#convex-yjs-provider)
 
-- [ ] **6.1 Convex schema**
-      `convex/schema.ts` — `pages` table with `yjsState: v.bytes()`, `content: v.any()` (materialized JSON), `version: v.number()`
+### Setup
 
-- [ ] **6.2 Sync mutation**
-      `convex/pages.ts` — `syncUpdate`: merge incoming Yjs delta with stored state, materialize `content` for storefront
+```bash
+cd apps/demo
+npx convex dev          # creates project, generates _generated/ types, starts dev server
+# Set NEXT_PUBLIC_CONVEX_URL in .env.local (printed by `npx convex dev`)
+```
 
-  > Ref: [Architecture § Sync Mutation](plans/puck-fork-architecture.md#sync-mutation)
+When `NEXT_PUBLIC_CONVEX_URL` is not set, the demo app falls back to localStorage (no Convex dependency at runtime).
 
-- [ ] **6.3 ConvexYjsProvider**
+- [x] **6.1 Convex schema**
+      `apps/demo/convex/schema.ts` — `pages` table with `yjsState: v.bytes()`, `content: v.any()`, `version: v.number()`, `status`, `tenantId`, `slug`
 
-  - [ ] `ydoc.on('update')` -> Convex `syncUpdate` mutation (skip remote-origin updates)
-  - [ ] `convex.onUpdate(getYjsState)` -> `Y.applyUpdate(ydoc, state, 'remote')`
+- [x] **6.2 Sync mutation + queries**
+      `apps/demo/convex/pages.ts`
 
-- [ ] **6.4 Compaction cron**
-      `convex/crons.ts` — nightly re-encode of Y.Docs over 5MB threshold
+  - [x] `syncUpdate` — merge incoming Yjs delta with stored state via `Y.mergeUpdates`, materialize `content`
+  - [x] `getYjsState` — reactive query returning `{ yjsState, version }` for provider subscription
+  - [x] `create` — create page with initial Y.Doc state
+  - [x] `publish` — set page status to 'published', re-materialize content
+  - [x] `getPublished` — read materialized content by tenant+slug (storefront path)
+  - [x] `list` — list pages for tenant (omits yjsState blob)
 
-  > Ref: [Architecture § Compaction](plans/puck-fork-architecture.md#compaction)
+- [x] **6.3 ConvexYjsProvider**
+      `apps/demo/lib/convex-yjs-provider.ts`
 
-- [ ] **6.5 Awareness / Presence**
+  - [x] `ydoc.on('update')` → Convex `syncUpdate` mutation (skips remote-origin updates)
+  - [x] `convex.onUpdate(getYjsState)` → `Y.applyUpdate(ydoc, state, 'remote')` with version dedup
+  - [x] `useConvexPage` hook — manages full lifecycle: page lookup/create, Y.Doc init, provider start
+  - [x] `ConvexClientProvider` — conditional provider (no-op when `NEXT_PUBLIC_CONVEX_URL` unset)
+  - [x] Demo app wired: `ConvexEditor` component with Convex sync, `Client` falls back to localStorage
 
-  > Ref: [Architecture § Awareness / Presence](plans/puck-fork-architecture.md#awareness--presence)
+- [x] **6.4 Compaction cron**
+      `apps/demo/convex/crons.ts` + `apps/demo/convex/compact.ts` — nightly re-encode of Y.Docs over 5MB threshold
 
-  - [ ] Yjs Awareness protocol for cursor positions, selection highlights, user presence
-  - [ ] Pipe awareness through Convex (sufficient latency for page builder use case)
+- [x] **6.5 Awareness / Presence**
+      Convex-native presence (not raw Yjs Awareness protocol — Convex latency is fine for page builders)
 
-- [ ] **6.6 Storefront read path**
-  > Ref: [Architecture § Storefront Read Path](plans/puck-fork-architecture.md#storefront-read-path)
-  - [ ] Cloudflare Worker reads materialized `content` field — no Yjs needed at read time
+  - [x] `convex/presence.ts` — `update`, `remove`, `getForPage` mutations/queries with TTL-based cleanup
+  - [x] `presence` table in schema — `pageId`, `userId`, `userName`, `userColor`, `selectedBlockId`, `activeField`
+  - [x] `lib/use-presence.ts` — `usePresence` hook: heartbeat every 10s, syncs selection changes, filters self
+  - [x] `lib/presence-overlay.tsx` — `PresenceOverlay` (colored border + name badge on selected blocks), `PresenceAvatars` (header user dots)
+  - [x] Wired into `ConvexEditor` via `componentOverlay` and `headerActions` overrides
+  - [x] `PresenceSync` inner component syncs Puck selection → Convex presence
+
+- [x] **6.6 Storefront read path**
+
+  - [x] `getPublished` query returns materialized content by tenant+slug (no Yjs needed)
+  - [x] `convex-render.tsx` — `ConvexRender` component reads published page from Convex, reconstructs Puck Data from Y.Doc state, renders via `<Render>`
+  - [x] `client.tsx` routes non-edit Convex path to `ConvexRender`
+  - [ ] Production Cloudflare Worker — out of scope for demo app, but `getPublished` query is ready
 
 ### Phase 6 verification
 
+- [ ] `npx convex dev` + `yarn dev` starts without errors (requires Convex project setup)
 - [ ] Two browser tabs editing the same page: changes sync in real-time
 - [ ] Undo in one tab doesn't revert the other tab's changes
 - [ ] Refresh a tab: state restored from Convex yjsState
-- [ ] Storefront renders from materialized JSON without Yjs dependency
+- [ ] Presence: colored borders and name badges appear on blocks selected by other users
+- [ ] Storefront: non-edit path renders published content from Convex
 
 ---
 
@@ -125,14 +153,14 @@ Application layer — outside `packages/core`, in the consuming app.
 | `applyToYDoc` (op -> Yjs translation)              | Eliminated                           |
 | `ydocToPuckData` (Y.Doc -> PuckData serialization) | Eliminated                           |
 | LIS algorithm for move detection                   | Eliminated                           |
-| Round-trip lossless serialization testing           | Eliminated                           |
-| onChange debouncing                                 | Eliminated                           |
-| Snapshot-based undo/redo                            | Replaced by Y.UndoManager           |
-| Custom presence tracking                            | Replaced by Yjs Awareness           |
-| `walkAppState` index computation                    | Replaced by flat Y.Doc + ParentIndex |
+| Round-trip lossless serialization testing          | Eliminated                           |
+| onChange debouncing                                | Eliminated                           |
+| Snapshot-based undo/redo                           | Replaced by Y.UndoManager            |
+| Custom presence tracking                           | Replaced by Yjs Awareness            |
+| `walkAppState` index computation                   | Replaced by flat Y.Doc + ParentIndex |
 | `materializeAppState` / `compat.ts`                | Removed                              |
 | `makeStatePublic` / `flattenData`                  | Removed                              |
 | `getIdsForParent` / `findZonesForArea`             | Removed                              |
 | `storeInterceptor` / dispatch pre/post-sync        | Removed                              |
 | `_docDirty` / `_hasOnChange` flags                 | Removed                              |
-| Full `Data` cloning on every action                 | Eliminated                           |
+| Full `Data` cloning on every action                | Eliminated                           |

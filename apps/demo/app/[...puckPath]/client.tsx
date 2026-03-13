@@ -6,17 +6,14 @@ import config from "../../config";
 import { useDemoData } from "../../lib/use-demo-data";
 import { useEffect, useState } from "react";
 import { Type } from "lucide-react";
+import { isConvexEnabled } from "../../lib/convex-client-provider";
+import { ConvexEditor } from "./convex-editor";
+import { ConvexRender } from "./convex-render";
 
 export function Client({ path, isEdit }: { path: string; isEdit: boolean }) {
   const metadata = {
     example: "Hello, world",
   };
-
-  const { data, resolvedData, key } = useDemoData({
-    path,
-    isEdit,
-    metadata,
-  });
 
   const [isClient, setIsClient] = useState(false);
 
@@ -25,6 +22,33 @@ export function Client({ path, isEdit }: { path: string; isEdit: boolean }) {
   }, []);
 
   if (!isClient) return null;
+
+  // Use Convex sync when configured, fall back to localStorage
+  if (isConvexEnabled) {
+    if (isEdit) {
+      return <ConvexEditor path={path} metadata={metadata} />;
+    }
+    return <ConvexRender path={path} metadata={metadata} />;
+  }
+
+  return <LocalStorageClient path={path} isEdit={isEdit} metadata={metadata} />;
+}
+
+/** Original localStorage-based editor (fallback when Convex is not configured) */
+function LocalStorageClient({
+  path,
+  isEdit,
+  metadata,
+}: {
+  path: string;
+  isEdit: boolean;
+  metadata: Record<string, string>;
+}) {
+  const { data, resolvedData, key } = useDemoData({
+    path,
+    isEdit,
+    metadata,
+  });
 
   const params = new URL(window.location.href).searchParams;
 
@@ -43,12 +67,11 @@ export function Client({ path, isEdit }: { path: string; isEdit: boolean }) {
             enabled: params.get("disableIframe") === "true" ? false : true,
           }}
           fieldTransforms={{
-            userField: ({ value }) => value, // Included to check types
+            userField: ({ value }) => value,
           }}
           _experimentalFullScreenCanvas={false}
           overrides={{
             fieldTypes: {
-              // Example of user field provided via overrides
               userField: ({ readOnly, field, name, value, onChange }) => (
                 <FieldLabel
                   label={field.label || name}

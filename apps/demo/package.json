@@ -14,7 +14,8 @@
     "next": "^16.0.8",
     "rc-footer": "^0.6.8",
     "react": "^19.2.1",
-    "react-dom": "^19.2.1"
+    "react-dom": "^19.2.1",
+    "convex": "^1.21.0"
   },
   "devDependencies": {
     "@types/node": "^17.0.12",
