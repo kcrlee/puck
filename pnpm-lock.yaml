@@ -193,6 +193,9 @@ importers:
       '@tiptap/react':
         specifier: ^3.11.1
         version: 3.20.1(@floating-ui/dom@1.7.6)(@tiptap/core@3.20.1(@tiptap/pm@3.20.1))(@tiptap/pm@3.20.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      convex:
+        specifier: ^1.0.0
+        version: 1.33.0(react@19.2.4)
       deep-diff:
         specifier: ^1.0.2
         version: 1.0.2

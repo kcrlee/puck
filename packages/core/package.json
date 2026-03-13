@@ -53,6 +53,16 @@
     "./puck.css": "./dist/index.css",
     "./no-external.css": "./dist/no-external.css",
     "./dist/index.css": "./dist/index.css",
+    "./convex": {
+      "types": "./dist/convex.d.ts",
+      "import": "./dist/convex.mjs",
+      "require": "./dist/convex.js"
+    },
+    "./convex/react": {
+      "types": "./dist/convex-react.d.ts",
+      "import": "./dist/convex-react.mjs",
+      "require": "./dist/convex-react.js"
+    },
     "./package.json": "./package.json"
   },
   "typesVersions": {
@@ -65,7 +75,7 @@
   "license": "MIT",
   "scripts": {
     "lint": "eslint \"**/*.ts*\"",
-    "build": "rm -rf dist && tsup bundle/index.ts bundle/rsc.tsx bundle/no-external.ts bundle/internal.ts",
+    "build": "rm -rf dist && tsup bundle/index.ts bundle/rsc.tsx bundle/no-external.ts bundle/internal.ts bundle/convex.ts bundle/convex-react.ts",
     "test": "jest",
     "prepare": "cp ../../README.md . && pnpm build",
     "postpublish": "rm README.md"
@@ -135,6 +145,12 @@
     "zustand": "^5.0.3"
   },
   "peerDependencies": {
-    "react": "^18.0.0 || ^19.0.0"
+    "react": "^18.0.0 || ^19.0.0",
+    "convex": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "convex": {
+      "optional": true
+    }
   }
 }

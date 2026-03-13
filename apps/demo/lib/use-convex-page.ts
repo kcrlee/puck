@@ -5,7 +5,7 @@ import * as Y from "yjs";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
-import { ConvexYjsProvider } from "./convex-yjs-provider";
+import { ConvexYjsProvider } from "@/core/convex/convex-yjs-provider";
 import { PageDocument } from "@/core/crdt/PageDocument";
 import type { Config, Data } from "@/core";
 
@@ -14,6 +14,9 @@ import type { Config, Data } from "@/core";
  *
  * Returns { pageDocument, isLoading, pageId } for wiring into <Puck>.
  * The PageDocument's Y.Doc is synced with Convex in real-time.
+ *
+ * This is the demo-specific wrapper that handles page creation/lookup.
+ * For a generic hook, use useConvexYDoc from @puckeditor/core/convex/react.
  */
 export function useConvexPage({
   tenantId,
@@ -92,7 +95,12 @@ export function useConvexPage({
       const doc = new PageDocument(ydoc, config);
 
       // Start real-time sync
-      const provider = new ConvexYjsProvider(ydoc, convex, resolvedPageId);
+      const provider = new ConvexYjsProvider(ydoc, convex, {
+        syncMutation: api.pages.syncUpdate,
+        stateQuery: api.pages.getYjsState,
+        documentId: resolvedPageId,
+        documentIdField: "pageId",
+      });
       providerRef.current = provider;
 
       setPageId(resolvedPageId);
