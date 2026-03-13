@@ -32,12 +32,13 @@ import {
 import { createFieldsSlice, type FieldsSlice } from "./slices/fields";
 import { resolveComponentData } from "../lib/resolve-component-data";
 import { walkAppState } from "../lib/data/walk-app-state";
-import { toRoot } from "../lib/data/to-root";
+
 import { generateId } from "../lib/generate-id";
 import { defaultAppState } from "./default-app-state";
 import { FieldTransforms } from "../types/API/FieldTransforms";
 import type { Editor } from "@tiptap/react";
 import { PageDocument } from "../crdt/PageDocument";
+import { materializeAppState } from "../crdt/compat";
 import { syncDocFromState } from "../crdt/sync";
 
 export { defaultAppState };
@@ -167,19 +168,15 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
         : null,
       dispatch: (action: PuckAction) =>
         set((s) => {
-          const { record } = get().history;
-
-          // Ensure Y.Doc is in sync with current state before the reducer runs.
-          // Migrated action handlers (insert, remove, move, duplicate) mutate the
-          // doc directly; non-migrated ones (replace, set, setData) still use
-          // walkAppState and need the post-sync below.
+          // Always pre-sync Y.Doc to handle external state changes (e.g.
+          // appStore.setState). Migrated actions (insert, remove, move,
+          // duplicate, reorder) read from the doc during dispatch.
           if (s.pageDocument && s.state.data) {
             s.pageDocument.config = s.config;
             syncDocFromState(s.pageDocument, s.state.data, s.config);
           }
 
           const dispatch = createReducer({
-            record,
             appStore: s,
           });
 
@@ -191,9 +188,16 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
 
           get().onAction?.(action, state, get().state);
 
-          // Sync Y.Doc to match the new state (keeps Y.Doc as mirror for
-          // non-migrated actions that still use walkAppState)
-          if (s.pageDocument && state.data) {
+          // Post-sync for non-migrated actions that modify data through
+          // the reducer (replace, replaceRoot, set, setData).
+          // Migrated actions already wrote to the doc directly.
+          const needsPostSync =
+            action.type === "set" ||
+            action.type === "setData" ||
+            action.type === "replace" ||
+            action.type === "replaceRoot";
+
+          if (needsPostSync && s.pageDocument && state.data) {
             syncDocFromState(s.pageDocument, state.data, s.config);
           }
 
@@ -275,7 +279,6 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
       setUi: (ui: Partial<UiState>, recordHistory?: boolean) =>
         set((s) => {
           const dispatch = createReducer({
-            record: () => {},
             appStore: s,
           });
 
@@ -326,7 +329,11 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
         );
       },
       resolveAndCommitData: async () => {
-        const { config, state, dispatch, resolveComponentData } = get();
+        const { config, state, resolveComponentData, pageDocument } = get();
+
+        // Ensure Y.Doc is in sync before resolving (called on load, not hot path)
+        pageDocument.config = config;
+        syncDocFromState(pageDocument, state.data, config);
 
         walkAppState(
           state,
@@ -334,33 +341,54 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
           (content) => content,
           (childItem) => {
             resolveComponentData(childItem, "load").then((resolved) => {
-              const { state } = get();
+              const s = get();
 
-              const node = state.indexes.nodes[resolved.node.props.id];
+              const node = s.state.indexes.nodes[resolved.node.props.id];
 
               // Ensure node hasn't been deleted whilst resolution happens
               if (node && resolved.didChange) {
                 if (resolved.node.props.id === "root") {
-                  dispatch({
-                    type: "replaceRoot",
-                    root: toRoot(resolved.node),
-                  });
+                  // Update root props via Y.Doc
+                  const { id: _id, ...rootPropsToUpdate } =
+                    resolved.node.props ?? {};
+                  const rootFields = s.config.root?.fields ?? {};
+                  const nonSlotProps: Record<string, any> = {};
+                  for (const [k, v] of Object.entries(rootPropsToUpdate)) {
+                    if (!(rootFields[k] && rootFields[k].type === "slot")) {
+                      nonSlotProps[k] = v;
+                    }
+                  }
+                  pageDocument.updateRootProps(nonSlotProps);
                 } else {
-                  // Use latest position, in case it's moved
-                  const zoneCompound = `${node.parentId}:${node.zone}`;
-                  const parentZone = state.indexes.zones[zoneCompound];
-
-                  const index = parentZone.contentIds.indexOf(
-                    resolved.node.props.id
+                  // Update block props via Y.Doc
+                  const { id: _id, ...propsToUpdate } =
+                    resolved.node.props;
+                  const componentConfig =
+                    s.config.components[resolved.node.type];
+                  const fields = componentConfig?.fields ?? {};
+                  const nonSlotProps: Record<string, any> = {};
+                  for (const [k, v] of Object.entries(propsToUpdate)) {
+                    if (!(fields[k] && fields[k].type === "slot")) {
+                      nonSlotProps[k] = v;
+                    }
+                  }
+                  pageDocument.updateProps(
+                    resolved.node.props.id,
+                    nonSlotProps
                   );
-
-                  dispatch({
-                    type: "replace",
-                    data: resolved.node,
-                    destinationIndex: index,
-                    destinationZone: zoneCompound,
-                  });
                 }
+
+                // Materialize updated doc to store
+                const newState = materializeAppState(
+                  pageDocument,
+                  s.state.ui,
+                  s.config
+                );
+                const selectedItem = newState.ui.itemSelector
+                  ? getItem(newState.ui.itemSelector, newState)
+                  : null;
+
+                set({ state: newState, selectedItem });
               }
             });
 
@@ -382,4 +410,30 @@ export function useAppStore<T>(selector: (state: AppStore) => T) {
 
 export function useAppStoreApi() {
   return useContext(appStoreContext);
+}
+
+/**
+ * Materialize the Y.Doc into Zustand state after direct PageDocument mutations.
+ * Callers that bypass dispatch (e.g. doc.updateProps) use this to sync the store.
+ */
+export function commitDocToStore(
+  appStoreApi: AppStoreApi,
+  options?: {
+    onAction?: { type: string; [key: string]: any };
+    ui?: Partial<UiState>;
+  }
+) {
+  const s = appStoreApi.getState();
+  const ui = options?.ui ? { ...s.state.ui, ...options.ui } : s.state.ui;
+  const state = materializeAppState(s.pageDocument, ui, s.config);
+
+  const selectedItem = state.ui.itemSelector
+    ? getItem(state.ui.itemSelector, state)
+    : null;
+
+  if (options?.onAction && s.onAction) {
+    s.onAction(options.onAction as PuckAction, state, s.state);
+  }
+
+  appStoreApi.setState({ state, selectedItem });
 }

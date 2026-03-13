@@ -1,9 +1,8 @@
 import { InsertAction } from "../reducer";
 import { insertAction } from "../reducer/actions/insert";
-import { useAppStoreApi } from "../store";
+import { useAppStoreApi, commitDocToStore } from "../store";
 import { generateId } from "./generate-id";
 import { getItem } from "./data/get-item";
-import { getSelectorForId } from "./get-selector-for-id";
 
 // Makes testing easier without mocks
 export const insertComponent = async (
@@ -39,7 +38,7 @@ export const insertComponent = async (
     recordHistory: true,
   });
 
-  const itemSelector = { index, zone };
+  const itemSelector = { id };
 
   // Select the item, immediately
   dispatch({ type: "setUi", ui: { itemSelector } });
@@ -52,14 +51,24 @@ export const insertComponent = async (
   const resolved = await resolveComponentData(itemData, "insert");
   if (!resolved.didChange) return;
 
-  // Use latest position, in case it has moved
-  const latestItemSelector = getSelectorForId(getState().state, id);
-  if (!latestItemSelector) return;
+  // Extract non-slot props for doc update
+  const { id: _resolvedId, ...propsToUpdate } = resolved.node.props;
+  const componentConfig = getState().config.components[resolved.node.type];
+  const fields = componentConfig?.fields ?? {};
+  const nonSlotProps: Record<string, any> = {};
+  for (const [k, v] of Object.entries(propsToUpdate)) {
+    if (!(fields[k] && fields[k].type === "slot")) {
+      nonSlotProps[k] = v;
+    }
+  }
 
-  dispatch({
-    type: "replace",
-    destinationZone: latestItemSelector.zone,
-    destinationIndex: latestItemSelector.index,
-    data: resolved.node,
+  getState().pageDocument.updateProps(id, nonSlotProps);
+  commitDocToStore(appStore, {
+    onAction: {
+      type: "replace",
+      data: resolved.node,
+      destinationIndex: 0,
+      destinationZone: "",
+    },
   });
 };

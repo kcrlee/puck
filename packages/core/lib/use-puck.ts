@@ -5,7 +5,7 @@ import {
   ComponentData,
 } from "../types";
 import { createContext, useContext, useEffect, useState } from "react";
-import { AppStore, useAppStoreApi } from "../store";
+import { AppStore, AppStoreApi, useAppStoreApi } from "../store";
 import {
   GetPermissions,
   RefreshPermissions,
@@ -37,15 +37,11 @@ export type UsePuckData<
     selector: ItemSelector
   ) => G["UserComponentData"] | undefined;
   getItemById: (id: string) => G["UserComponentData"] | undefined;
-  getSelectorForId: (id: string) => Required<ItemSelector> | undefined;
+  getSelectorForId: (id: string) => ItemSelector | undefined;
   getParentById: (id: string) => ComponentData | undefined;
   history: {
     back: HistorySlice["back"];
     forward: HistorySlice["forward"];
-    setHistories: HistorySlice["setHistories"];
-    setHistoryIndex: HistorySlice["setHistoryIndex"];
-    histories: HistorySlice["histories"];
-    index: HistorySlice["index"];
     hasPast: boolean;
     hasFuture: boolean;
   };
@@ -63,17 +59,13 @@ type PickedStore = Pick<
 
 export const generateUsePuck = (
   store: PickedStore,
-  getState: ReturnType<typeof useAppStoreApi>["getState"]
+  appStoreApi: AppStoreApi
 ): UsePuckStore => {
   const history: UsePuckStore["history"] = {
     back: store.history.back,
     forward: store.history.forward,
-    setHistories: store.history.setHistories,
-    setHistoryIndex: store.history.setHistoryIndex,
     hasPast: store.history.hasPast(),
     hasFuture: store.history.hasFuture(),
-    histories: store.history.histories,
-    index: store.history.index,
   };
 
   const storeData: PuckApi = {
@@ -82,17 +74,38 @@ export const generateUsePuck = (
     dispatch: store.dispatch,
     getPermissions: store.permissions.getPermissions,
     refreshPermissions: store.permissions.refreshPermissions,
-    resolveDataById: (id, trigger) => resolveDataById(id, getState, trigger),
+    resolveDataById: (id, trigger) => resolveDataById(id, appStoreApi, trigger),
     resolveDataBySelector: (selector, trigger) =>
-      resolveDataBySelector(selector, getState, trigger),
+      resolveDataBySelector(selector, appStoreApi, trigger),
     history,
     selectedItem: store.selectedItem || null,
     getItemBySelector: (selector) => getItem(selector, store.state),
-    getItemById: (id) => store.state.indexes.nodes[id].data,
+    getItemById: (id) => {
+      // Use Y.Doc when available, fall back to Zustand nodes
+      const doc = appStoreApi.getState().pageDocument;
+      const block = doc.getBlock(id);
+      if (block) {
+        // Reconstruct ComponentData from SerializedBlock
+        const componentConfig =
+          appStoreApi.getState().config.components[block.type];
+        const fields = componentConfig?.fields ?? {};
+        const props: Record<string, any> = { ...block.props, id: block.id };
+        // Add empty slot arrays for slot fields
+        for (const [fieldName, fieldDef] of Object.entries(fields)) {
+          if (fieldDef.type === "slot" && !(fieldName in props)) {
+            props[fieldName] = [];
+          }
+        }
+        return { type: block.type, props } as any;
+      }
+      return store.state.indexes.nodes[id]?.data;
+    },
     getSelectorForId: (id) => getSelectorForId(store.state, id),
     getParentById: (id) => {
-      const node = store.state.indexes.nodes[id];
-      const parentId = node.parentId;
+      // Use Y.Doc parent index when available
+      const doc = appStoreApi.getState().pageDocument;
+      const parentInfo = doc.findParent(id);
+      const parentId = parentInfo?.parentId ?? null;
       if (parentId === null) return;
       const parentNode = store.state.indexes.nodes[parentId];
       if (!parentNode) return;
@@ -132,7 +145,7 @@ export const useRegisterUsePuckStore = (
     createStore(() =>
       generateUsePuck(
         convertToPickedStore(appStore.getState()),
-        appStore.getState
+        appStore
       )
     )
   );
@@ -142,7 +155,7 @@ export const useRegisterUsePuckStore = (
     return appStore.subscribe(
       (store) => convertToPickedStore(store),
       (pickedStore) => {
-        usePuckStore.setState(generateUsePuck(pickedStore, appStore.getState));
+        usePuckStore.setState(generateUsePuck(pickedStore, appStore));
       }
     );
   }, []);

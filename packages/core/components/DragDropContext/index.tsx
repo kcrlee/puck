@@ -390,7 +390,7 @@ const DragDropContextClient = ({
             dispatch({
               type: "setUi",
               ui: {
-                itemSelector: { index, zone },
+                itemSelector: { id: source.id as string },
                 isDragging: false,
               },
               recordHistory: true,
@@ -505,7 +505,7 @@ const DragDropContextClient = ({
             }
 
             const item = getItem(
-              initialSelector.current,
+              { id: sourceId },
               appStore.getState().state
             );
 
@@ -536,10 +536,7 @@ const DragDropContextClient = ({
             const sourceData = source.data as ComponentDndData;
 
             const item = getItem(
-              {
-                zone: sourceData.zone,
-                index: sourceData.index,
-              },
+              { id: source.id as string },
               appStore.getState().state
             );
 

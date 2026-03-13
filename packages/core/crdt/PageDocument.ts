@@ -213,6 +213,37 @@ export class PageDocument {
     }, LOCAL_ORIGIN);
   }
 
+  updateProps(blockId: string, props: Record<string, any>): void {
+    this.ydoc.transact(() => {
+      const blockMap = this.blocks.get(blockId);
+      if (!blockMap) return;
+      const propsMap: Y.Map<any> = blockMap.get("props");
+      for (const [key, value] of Object.entries(props)) {
+        if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+          propsMap.set(key, this._propsToYMap(value));
+        } else if (Array.isArray(value)) {
+          propsMap.set(key, this._arrayToYArray(value));
+        } else {
+          propsMap.set(key, value);
+        }
+      }
+    }, LOCAL_ORIGIN);
+  }
+
+  updateRootProps(props: Record<string, any>): void {
+    this.ydoc.transact(() => {
+      for (const [key, value] of Object.entries(props)) {
+        if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+          this.rootProps.set(key, this._propsToYMap(value));
+        } else if (Array.isArray(value)) {
+          this.rootProps.set(key, this._arrayToYArray(value));
+        } else {
+          this.rootProps.set(key, value);
+        }
+      }
+    }, LOCAL_ORIGIN);
+  }
+
   updateProp(blockId: string, key: string, value: any): void {
     this.ydoc.transact(() => {
       const blockMap = this.blocks.get(blockId);

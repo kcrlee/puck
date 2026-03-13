@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useHotkey } from "./use-hotkey";
 import { useAppStoreApi } from "../store";
+import { getPositionForId } from "./get-selector-for-id";
 
 const isElementVisible = (element: HTMLElement): boolean => {
   let current: HTMLElement | null = element;
@@ -75,15 +76,18 @@ export const useDeleteHotkeys = () => {
       const sel = state.ui?.itemSelector;
 
       // Swallow key in canvas context to avoid browser back navigation.
-      if (!sel?.zone || !selectedItem) return true;
+      if (!sel || !selectedItem) return true;
 
       if (!permissions.getPermissions({ item: selectedItem }).delete)
         return true;
 
+      const position = getPositionForId(state, sel.id);
+      if (!position) return true;
+
       dispatch({
         type: "remove",
-        index: sel.index,
-        zone: sel.zone,
+        index: position.index,
+        zone: position.zone,
       });
       return true;
     },

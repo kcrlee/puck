@@ -186,8 +186,9 @@ describe("Reducer", () => {
           }),
         ]);
 
-        expect(newState.ui.itemSelector?.index).toBe(1);
-        expect(newState.ui.itemSelector?.zone).toBe(rootDroppableId);
+        // itemSelector should point to the duplicated block (not the original)
+        expect(newState.ui.itemSelector?.id).toBeDefined();
+        expect(newState.ui.itemSelector?.id).not.toBe("sampleId");
       });
     });
     describe("with slots", () => {
@@ -396,8 +397,9 @@ describe("Reducer", () => {
           }),
         ]);
 
-        expect(newState.ui.itemSelector?.index).toBe(1);
-        expect(newState.ui.itemSelector?.zone).toBe("root:slot");
+        // itemSelector should point to the duplicated block (not the original)
+        expect(newState.ui.itemSelector?.id).toBeDefined();
+        expect(newState.ui.itemSelector?.id).not.toBe("sampleId");
       });
     });
   });

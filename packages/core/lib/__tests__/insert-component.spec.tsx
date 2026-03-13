@@ -99,8 +99,7 @@ describe("use-insert-component", () => {
         type: "setUi",
         ui: {
           itemSelector: {
-            zone: rootDroppableId,
-            index: 0,
+            id: expect.stringContaining("MyComponent-"),
           },
         },
       });

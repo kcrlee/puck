@@ -93,7 +93,7 @@ describe("resolveDataById", () => {
 
   it("resolves when called", async () => {
     // When: ---------------
-    await act(() => resolveDataById("Child-1", appStore.getState));
+    await act(() => resolveDataById("Child-1", appStore));
 
     // Then: ---------------
     expect(childResolveData).toHaveBeenCalledTimes(1);
@@ -106,7 +106,7 @@ describe("resolveDataById", () => {
     const consoleWarnMock = jest.spyOn(console, "warn").mockImplementation();
 
     // When: ---------------
-    await act(() => resolveDataById("Doesn't exist", appStore.getState));
+    await act(() => resolveDataById("Doesn't exist", appStore));
 
     // Then: ---------------
     expect(childResolveData).not.toHaveBeenCalled();
@@ -122,7 +122,7 @@ describe("resolveDataById", () => {
     // When: ---------------
     await act(async () => {
       dispatch({ type: "remove", index: 0, zone: "Parent-1:items" });
-      resolveDataById("Child-1", appStore.getState);
+      resolveDataById("Child-1", appStore);
     });
 
     // Then: ---------------

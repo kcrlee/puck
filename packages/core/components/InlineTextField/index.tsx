@@ -2,11 +2,10 @@
 
 import { memo, useEffect, useRef, useState } from "react";
 import { registerOverlayPortal } from "../../lib/overlay-portal";
-import { useAppStoreApi } from "../../store";
+import { useAppStoreApi, commitDocToStore } from "../../store";
 import styles from "./styles.module.css";
 import { getClassNameFactory } from "../../lib";
 import { setDeep } from "../../lib/data/set-deep";
-import { getSelectorForId } from "../../lib/get-selector-for-id";
 
 const getClassName = getClassNameFactory("InlineTextField", styles);
 
@@ -49,12 +48,6 @@ const InlineTextFieldInternal = ({
         const appStore = appStoreApi.getState();
         const node = appStore.state.indexes.nodes[componentId];
 
-        const zoneCompound = `${node.parentId}:${node.zone}`;
-        const index =
-          appStore.state.indexes.zones[zoneCompound]?.contentIds.indexOf(
-            componentId
-          );
-
         let value = e.target.innerText;
 
         if (disableLineBreaks) {
@@ -68,11 +61,26 @@ const InlineTextFieldInternal = ({
           "replace"
         );
 
-        appStore.dispatch({
-          type: "replace",
-          data: resolvedData.node,
-          destinationIndex: index,
-          destinationZone: zoneCompound,
+        // Extract non-slot props for doc update
+        const { id: _id, ...propsToUpdate } = resolvedData.node.props;
+        const componentConfig =
+          appStore.config.components[node.data.type];
+        const fields = componentConfig?.fields ?? {};
+        const nonSlotProps: Record<string, any> = {};
+        for (const [k, v] of Object.entries(propsToUpdate)) {
+          if (!(fields[k] && fields[k].type === "slot")) {
+            nonSlotProps[k] = v;
+          }
+        }
+
+        appStore.pageDocument.updateProps(componentId, nonSlotProps);
+        commitDocToStore(appStoreApi, {
+          onAction: {
+            type: "replace",
+            data: resolvedData.node,
+            destinationIndex: 0,
+            destinationZone: "",
+          },
         });
       };
 
@@ -105,12 +113,7 @@ const InlineTextFieldInternal = ({
         e.preventDefault();
         e.stopPropagation();
 
-        const itemSelector = getSelectorForId(
-          appStoreApi.getState().state,
-          componentId
-        );
-
-        appStoreApi.getState().setUi({ itemSelector });
+        appStoreApi.getState().setUi({ itemSelector: { id: componentId } });
       }}
       onKeyDown={(e) => {
         e.stopPropagation();

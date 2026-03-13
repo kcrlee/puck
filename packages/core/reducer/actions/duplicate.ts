@@ -22,7 +22,7 @@ export function duplicateAction<UserData extends Data>(
 
   // Duplicate block (deep clone with new IDs, inserted after source)
   const target = parseZoneCompound(action.sourceZone);
-  doc.duplicateBlock(blockId, target, action.sourceIndex + 1);
+  const duplicatedId = doc.duplicateBlock(blockId, target, action.sourceIndex + 1);
 
   const newState = materializeAppState(
     doc,
@@ -34,10 +34,7 @@ export function duplicateAction<UserData extends Data>(
     ...newState,
     ui: {
       ...newState.ui,
-      itemSelector: {
-        index: action.sourceIndex + 1,
-        zone: action.sourceZone,
-      },
+      itemSelector: duplicatedId ? { id: duplicatedId } : null,
     },
   };
 }

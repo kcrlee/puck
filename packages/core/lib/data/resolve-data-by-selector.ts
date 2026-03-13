@@ -1,4 +1,4 @@
-import { useAppStoreApi } from "../../store";
+import { AppStoreApi } from "../../store";
 import { ResolveDataTrigger } from "../../types";
 import { getItem, ItemSelector } from "./get-item";
 import { toComponent } from "./to-component";
@@ -6,10 +6,10 @@ import { resolveAndReplaceData } from "./resolve-and-replace-data";
 
 export async function resolveDataBySelector(
   selector: ItemSelector,
-  getState: ReturnType<typeof useAppStoreApi>["getState"],
+  appStoreApi: AppStoreApi,
   trigger?: ResolveDataTrigger
 ) {
-  const item = getItem(selector, getState().state);
+  const item = getItem(selector, appStoreApi.getState().state);
 
   if (!item) {
     console.warn(
@@ -22,5 +22,5 @@ export async function resolveDataBySelector(
 
   const itemAsComponent = toComponent(item);
 
-  await resolveAndReplaceData(itemAsComponent, getState, trigger);
+  await resolveAndReplaceData(itemAsComponent, appStoreApi, trigger);
 }

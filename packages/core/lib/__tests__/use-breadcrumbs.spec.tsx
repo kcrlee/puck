@@ -93,7 +93,7 @@ describe("useBreadcrumbs", () => {
       { label: "Page", selector: null },
       {
         label: "My Component Label",
-        selector: { index: 0, zone: "root:default-zone" },
+        selector: { id: "item-1" },
       },
     ]);
   });
@@ -153,7 +153,7 @@ describe("useBreadcrumbs", () => {
     expect(result).toEqual([
       {
         label: "My Component Label",
-        selector: { index: 0, zone: "root:default-zone" },
+        selector: { id: "item-1" },
       },
     ]);
   });
@@ -215,7 +215,7 @@ describe("useBreadcrumbs", () => {
       { label: "Page", selector: null },
       {
         label: "MyComponent", // Fall back to type name
-        selector: { index: 0, zone: "root:default-zone" },
+        selector: { id: "item-1" },
       },
     ]);
   });

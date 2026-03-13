@@ -95,7 +95,7 @@ describe("resolveAndReplaceData", () => {
 
   it("resolves when called", async () => {
     // When: ---------------
-    await act(() => resolveAndReplaceData(child1, appStore.getState));
+    await act(() => resolveAndReplaceData(child1, appStore));
 
     // Then: ---------------
     expect(childResolveData).toHaveBeenCalledTimes(1);
@@ -105,7 +105,7 @@ describe("resolveAndReplaceData", () => {
 
   it("resolves with a 'force' trigger by default", async () => {
     // When: ---------------
-    await act(() => resolveAndReplaceData(child1, appStore.getState));
+    await act(() => resolveAndReplaceData(child1, appStore));
 
     // Then: ---------------
     expect(childResolveData).toHaveBeenCalledTimes(1);
@@ -118,7 +118,7 @@ describe("resolveAndReplaceData", () => {
     const trigger: ResolveDataTrigger = "insert";
 
     // When: ---------------
-    await act(() => resolveAndReplaceData(child1, appStore.getState, trigger));
+    await act(() => resolveAndReplaceData(child1, appStore, trigger));
 
     // Then: ---------------
     expect(childResolveData).toHaveBeenCalledTimes(1);
@@ -138,7 +138,7 @@ describe("resolveAndReplaceData", () => {
 
     // When: ---------------
     await act(() =>
-      resolveAndReplaceData(nonExistentComponent, appStore.getState)
+      resolveAndReplaceData(nonExistentComponent, appStore)
     );
 
     // Then: ---------------

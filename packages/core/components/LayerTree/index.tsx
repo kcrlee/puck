@@ -18,16 +18,11 @@ const getClassName = getClassNameFactory("LayerTree", styles);
 const getClassNameLayer = getClassNameFactory("Layer", styles);
 
 const Layer = ({
-  index,
   itemId,
-  zoneCompound,
 }: {
-  index: number;
   itemId: string;
-  zoneCompound: string;
 }) => {
   const config = useAppStore((s) => s.config);
-  const itemSelector = useAppStore((s) => s.state.ui.itemSelector);
   const dispatch = useAppStore((s) => s.dispatch);
 
   const setItemSelector = useCallback(
@@ -39,9 +34,7 @@ const Layer = ({
 
   const selecedItemId = useAppStore((s) => s.selectedItem?.props.id);
 
-  const isSelected =
-    selecedItemId === itemId ||
-    (itemSelector && itemSelector.zone === rootDroppableId && !zoneCompound);
+  const isSelected = selecedItemId === itemId;
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const nodeData = useAppStore((s) => s.state.indexes.nodes[itemId]);
@@ -104,20 +97,14 @@ const Layer = ({
             );
 
             if (!el) {
-              setItemSelector({
-                index,
-                zone: zoneCompound,
-              });
+              setItemSelector({ id: itemId });
               return;
             }
 
             scrollIntoView(el as HTMLElement);
 
             onScrollEnd(frame, () => {
-              setItemSelector({
-                index,
-                zone: zoneCompound,
-              });
+              setItemSelector({ id: itemId });
             });
           }}
           onMouseEnter={(e) => {
@@ -205,12 +192,10 @@ export const LayerTree = ({
         {contentIds.length === 0 && (
           <div className={getClassName("helper")}>No items</div>
         )}
-        {contentIds.map((itemId, i) => {
+        {contentIds.map((itemId) => {
           return (
             <Layer
-              index={i}
               itemId={itemId}
-              zoneCompound={zoneCompound}
               key={itemId}
             />
           );

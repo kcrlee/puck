@@ -1,14 +1,15 @@
-import { useAppStoreApi } from "../../store";
+import { AppStoreApi } from "../../store";
 import { ResolveDataTrigger } from "../../types";
 import { PuckNodeData } from "../../types/Internal";
 import { resolveAndReplaceData } from "./resolve-and-replace-data";
 
 export async function resolveDataById(
   id: string,
-  getState: ReturnType<typeof useAppStoreApi>["getState"],
+  appStoreApi: AppStoreApi,
   trigger?: ResolveDataTrigger
 ) {
-  const node: PuckNodeData | undefined = getState().state.indexes.nodes[id];
+  const node: PuckNodeData | undefined =
+    appStoreApi.getState().state.indexes.nodes[id];
 
   if (!node) {
     console.warn(
@@ -17,5 +18,5 @@ export async function resolveDataById(
     return;
   }
 
-  await resolveAndReplaceData(node.data, getState, trigger);
+  await resolveAndReplaceData(node.data, appStoreApi, trigger);
 }

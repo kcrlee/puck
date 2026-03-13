@@ -37,7 +37,14 @@ export const useRegisterFieldsSlice = (
       const nodes = appStore.getState().state.indexes.nodes;
       const node = nodes[id || "root"];
       const componentData = node?.data;
-      const parentNode = node?.parentId ? nodes[node.parentId] : null;
+      // Use Y.Doc parent index when available, fall back to Zustand nodes
+      const parentInfo = id
+        ? appStore.getState().pageDocument.findParent(id)
+        : null;
+      const parentId = parentInfo
+        ? parentInfo.parentId
+        : (node?.parentId ?? null);
+      const parentNode = parentId ? nodes[parentId] : null;
       const parent = parentNode?.data || null;
 
       const { getComponentConfig, state } = appStore.getState();

@@ -235,6 +235,39 @@ describe("PageDocument", () => {
       expect(doc.getRootBlockIds()).toEqual([id, "heading-1", "card-1"]);
     });
 
+    it("updateProps sets multiple props in a single transaction", () => {
+      doc.updateProps("heading-1", { text: "Batch", level: 5 });
+      const props = doc.getBlockProps("heading-1");
+      expect(props?.text).toBe("Batch");
+      expect(props?.level).toBe(5);
+    });
+
+    it("updateProps handles object and array values", () => {
+      doc.updateProps("heading-1", {
+        style: { color: "blue" },
+        tags: ["x", "y"],
+      });
+      const props = doc.getBlockProps("heading-1");
+      expect(props?.style).toEqual({ color: "blue" });
+      expect(props?.tags).toEqual(["x", "y"]);
+    });
+
+    it("updateRootProps sets multiple root props", () => {
+      doc.updateRootProps({ title: "New Title", description: "A desc" });
+      expect(doc.getRootProp("title")).toBe("New Title");
+      expect(doc.getRootProp("description")).toBe("A desc");
+    });
+
+    it("updateRootProps handles objects and arrays", () => {
+      doc.updateRootProps({
+        meta: { keywords: ["a"] },
+        tags: [1, 2, 3],
+      });
+      const rootProps = doc.getRootPropsJSON();
+      expect(rootProps.meta).toEqual({ keywords: ["a"] });
+      expect(rootProps.tags).toEqual([1, 2, 3]);
+    });
+
     it("updateProp updates a primitive prop", () => {
       doc.updateProp("heading-1", "text", "Updated");
       expect(doc.getBlockProps("heading-1")?.text).toBe("Updated");

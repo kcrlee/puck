@@ -58,10 +58,14 @@ export const createPermissionsSlice = (
       item: ComponentData,
       force: boolean = false
     ) => {
-      const { config, state: appState, setComponentLoading } = get();
+      const { config, state: appState, setComponentLoading, pageDocument } = get();
       const itemCache: Cache[string] | undefined = cache[item.props.id];
       const nodes = appState.indexes.nodes;
-      const parentId = nodes[item.props.id]?.parentId;
+      // Use Y.Doc parent index when available, fall back to Zustand nodes
+      const parentInfo = pageDocument.findParent(item.props.id);
+      const parentId = parentInfo
+        ? parentInfo.parentId
+        : (nodes[item.props.id]?.parentId ?? null);
       const parentNode = parentId ? nodes[parentId] : null;
       const parentData = parentNode?.data ?? null;
 

@@ -370,39 +370,28 @@ export const DraggableComponent = ({
         dispatch({
           type: "setUi",
           ui: {
-            itemSelector: { index, zone: zoneCompound },
+            itemSelector: { id },
           },
         });
       }
     },
-    [index, zoneCompound, id, isSelected]
+    [id, isSelected]
   );
 
   const appStore = useAppStoreApi();
 
   const onSelectParent = useCallback(() => {
-    const { nodes, zones } = appStore.getState().state.indexes;
+    const { nodes } = appStore.getState().state.indexes;
     const node = nodes[id];
 
-    const parentNode = node?.parentId ? nodes[node?.parentId] : null;
-
-    if (!parentNode || !node.parentId) {
+    if (!node?.parentId) {
       return;
     }
-
-    const parentZoneCompound = `${parentNode.parentId}:${parentNode.zone}`;
-
-    const parentIndex = zones[parentZoneCompound].contentIds.indexOf(
-      node.parentId
-    );
 
     dispatch({
       type: "setUi",
       ui: {
-        itemSelector: {
-          zone: parentZoneCompound,
-          index: parentIndex,
-        },
+        itemSelector: { id: node.parentId },
       },
     });
   }, [ctx, path]);

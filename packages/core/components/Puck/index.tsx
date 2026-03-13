@@ -21,7 +21,6 @@ import type {
   Overrides,
   Permissions,
   Plugin,
-  InitialHistory,
   UserGenerics,
   Config,
   Data,
@@ -53,6 +52,7 @@ import { populateIds } from "../../lib/data/populate-ids";
 import { toComponent } from "../../lib/data/to-component";
 import { Layout } from "./components/Layout";
 import { useSafeId } from "../../lib/use-safe-id";
+import { PageDocumentProvider } from "../../crdt/context";
 
 type PuckProps<
   UserConfig extends Config = Config,
@@ -85,7 +85,6 @@ type PuckProps<
   dnd?: {
     disableAutoScroll?: boolean;
   };
-  initialHistory?: InitialHistory;
   metadata?: Metadata;
   height?: CSSProperties["height"];
   _experimentalFullScreenCanvas?: boolean;
@@ -120,7 +119,6 @@ function PuckProvider<
     overrides,
     viewports = defaultViewports,
     iframe: _iframe,
-    initialHistory: _initialHistory,
     metadata,
     onAction,
     fieldTransforms,
@@ -196,40 +194,7 @@ function PuckProvider<
     return walkAppState(newAppState, config);
   });
 
-  const { appendData = true } = _initialHistory || {};
-
-  const [blendedHistories] = useState(
-    [
-      ...(_initialHistory?.histories || []),
-      ...(appendData ? [{ state: generatedAppState }] : []),
-    ].map((history) => {
-      // Inject default data to enable partial history injections
-      let newState = { ...generatedAppState, ...history.state };
-
-      // The history generally doesn't include the indexes, so calculate them for each state item
-      if (!(history.state as PrivateAppState).indexes) {
-        newState = walkAppState(newState, config);
-      }
-
-      return {
-        ...history,
-        state: newState,
-      };
-    })
-  );
-
-  const initialHistoryIndex = useMemo(() => {
-    if (
-      _initialHistory?.index !== undefined &&
-      _initialHistory?.index >= 0 &&
-      _initialHistory?.index < blendedHistories.length
-    ) {
-      return _initialHistory?.index;
-    }
-
-    return blendedHistories.length - 1;
-  }, []);
-  const initialAppState = blendedHistories[initialHistoryIndex].state;
+  const initialAppState = generatedAppState;
 
   // Load all plugins into the overrides
   const loadedOverrides = useLoadedOverrides({
@@ -299,11 +264,7 @@ function PuckProvider<
     });
   }, [config, plugins, loadedOverrides, viewports, iframe, onAction, metadata]);
 
-  useRegisterHistorySlice(appStore, {
-    histories: blendedHistories,
-    index: initialHistoryIndex,
-    initialAppState,
-  });
+  useRegisterHistorySlice(appStore);
 
   const previousData = useRef<Data>(null);
 
@@ -334,9 +295,11 @@ function PuckProvider<
 
   return (
     <appStoreContext.Provider value={appStore}>
-      <UsePuckStoreContext.Provider value={uPuckStore}>
-        {children}
-      </UsePuckStoreContext.Provider>
+      <PageDocumentProvider document={appStore.getState().pageDocument}>
+        <UsePuckStoreContext.Provider value={uPuckStore}>
+          {children}
+        </UsePuckStoreContext.Provider>
+      </PageDocumentProvider>
     </appStoreContext.Provider>
   );
 }

@@ -42,21 +42,6 @@ export type History<D = any> = {
   id?: string;
 };
 
-type InitialHistoryAppend<AS = Partial<AppState>> = {
-  histories: History<AS>[];
-  index?: number;
-  appendData?: true;
-};
-
-type InitialHistoryNoAppend<AS = Partial<AppState>> = {
-  histories: [History<AS>, ...History<AS>[]]; // Array with minimum length of 1
-  index?: number;
-  appendData?: false;
-};
-
-export type InitialHistory<AS = Partial<AppState>> =
-  | InitialHistoryAppend<AS>
-  | InitialHistoryNoAppend<AS>;
 
 export type Slot<
   Props extends { [key: string]: DefaultComponentProps } = {

@@ -12,6 +12,7 @@ Monorepo managed by Turborepo with Yarn 1.x.
 
 ## Common Commands
 
+- `yarn install` — Required before running tests (npx jest fails without local node_modules)
 - `yarn build` — Build all packages (turbo)
 - `yarn dev` — Dev server for demo app
 - `yarn test` — Run all tests (turbo)
@@ -34,18 +35,26 @@ Monorepo managed by Turborepo with Yarn 1.x.
 - Zustand store with `subscribeWithSelector` middleware
 - `AppStore` type holds state, config, dispatch, and slice modules
 - `dispatch(action)` runs through Redux-style reducer, then syncs state to Y.Doc
-- Slices: `history`, `nodes`, `permissions`, `fields`
+- `commitDocToStore(appStoreApi, options?)` — materializes Y.Doc → Zustand state after direct PageDocument mutations. Used by callers that bypass dispatch.
+- Slices: `nodes`, `permissions`, `fields`
+- History: `HistorySlice` (thin wrapper around Y.UndoManager — `back`, `forward`, `hasPast`, `hasFuture`)
 
 ### Reducer (`packages/core/reducer/`)
-- `createReducer` wraps action handlers in `storeInterceptor` (handles onAction callback)
+- `createReducer` wraps action handlers in `storeInterceptor` (fires onAction callback only)
 - Actions: insert, remove, move, reorder, replace, replaceRoot, duplicate, set, setData, setUi, registerZone, unregisterZone
 - Each action handler receives `(state, action, appStore)` and returns new `PrivateAppState`
 
 ### CRDT Layer (`packages/core/crdt/`)
-- Active migration: reducer is still authoritative, Y.Doc is synced mirror after dispatch
+- Active migration: 5 reducer actions (insert, remove, move, duplicate, reorder) are PageDocument-first. All `replace`/`replaceRoot` callers are migrated to `doc.updateProps` + `commitDocToStore` — they no longer go through dispatch
 - History (undo/redo) uses Y.UndoManager, not snapshot arrays
-- Migration plan: `.claude/plans/sorted-juggling-lightning.md`
-- When modifying reducer actions or store: ensure `syncDocFromState` still works (it rebuilds Y.Doc after every dispatch)
+- Migration plan & task tracker: `TODO.md` (phases), `plans/puck-fork-architecture.md` (design rationale)
+- Dispatch pre-syncs Y.Doc for all actions (handles external `setState` calls). Post-sync only runs for `set`/`setData`/`replace`/`replaceRoot`
+- `PageDocument.ts` — Y.Doc wrapper: addBlock, removeBlock, moveBlock, duplicateBlock, updateProp, updateProps, updateRootProps, undo/redo
+- `context.tsx` — `PageDocumentProvider` / `usePageDocument` — React context for Y.Doc access (wired into Puck component tree)
+- `hooks.ts` — `useBlock`, `useRootBlockIds`, `useRootProps`, `useSlotChildren` — reactive Y.Doc hooks (NOTE: fire on ALL doc changes, not per-block — not yet suitable for surgical re-renders)
+- `compat.ts` — `materializeAppState(doc, ui, config)`: Y.Doc → Puck state bridge (toPuckData + walkAppState)
+- `sync.ts` — `syncDocFromState(doc, data, config)`: Puck state → Y.Doc (clear-and-rebuild)
+- `dispatch.ts` — Helpers: `parseZoneCompound`, `getBlockIdAtIndex`, `buildSlotDefs`
 
 ### Key Types
 - `PrivateAppState` = `{ data, ui, indexes: { nodes: NodeIndex, zones: ZoneIndex } }`
@@ -61,8 +70,12 @@ Monorepo managed by Turborepo with Yarn 1.x.
 
 ## Gotchas
 
-- Active CRDT migration in progress — see plan at `.claude/plans/sorted-juggling-lightning.md`
+- Action migration pattern: sync doc → PageDocument method → `materializeAppState`. See CRDT Layer section above for which actions are migrated.
+- `initialHistory` prop and legacy history API (`setHistories`, `setHistoryIndex`, `record`) have been removed — Y.UndoManager is the only history mechanism
 - `walkAppState` rebuilds `NodeIndex` and `ZoneIndex` from data — expensive, used after state changes
 - Slot fields (type: "slot") store child content inline on props; legacy DropZones use `data.zones`
 - Y.UndoManager `captureTimeout: 500ms` merges rapid actions into single undo steps
-- `syncDocFromState` does full clear-and-rebuild — coarse but correct for the sync bridge phase
+- When calling `doc.updateProps`, filter out slot-type fields — slots are stored as separate Y.Array structures in Y.Doc, not as nested props. Use config to check `field.type === "slot"`
+- `resolveAndReplaceData`, `resolveDataById`, `resolveDataBySelector` accept `AppStoreApi` (not `getState`) as second argument
+- Tests that call `appStore.setState(...)` directly don't sync the Y.Doc — dispatch pre-sync handles this, but direct `pageDocument` reads may see stale data
+- `syncDocFromState` does full clear-and-rebuild — used as pre-sync before all dispatches and post-sync for `set`/`setData`/`replace`/`replaceRoot` only. Also used in `resolveAndCommitData` (one-time load)

@@ -1,29 +1,27 @@
-import { useAppStoreApi } from "../store";
-import { ItemSelector } from "./data/get-item";
-import { getSelectorForId } from "./get-selector-for-id";
+import { useAppStoreApi, commitDocToStore } from "../store";
 import { rootDroppableId } from "./root-droppable-id";
 
 /**
  * Moves a component, resolves its data, and updates the appStore state.
  * @param id - Id of the component to move.
- * @param sourceSelector - The current position of the component.
- * @param destinationSelector - The target position to move the component to.
+ * @param source - The source position (zone + index) of the component.
+ * @param destination - The target position (zone + index) to move the component to.
  * @param appStore - The appStore instance where the component is.
  * @returns A promise that resolves when the move operation is complete.
  */
 export const moveComponent = async (
   id: string,
-  sourceSelector: ItemSelector,
-  destinationSelector: ItemSelector,
+  source: { zone: string; index: number },
+  destination: { zone: string; index: number },
   appStore: ReturnType<typeof useAppStoreApi>
 ) => {
   const dispatch = appStore.getState().dispatch;
   dispatch({
     type: "move",
-    sourceIndex: sourceSelector.index,
-    sourceZone: sourceSelector.zone ?? rootDroppableId,
-    destinationIndex: destinationSelector.index,
-    destinationZone: destinationSelector.zone ?? rootDroppableId,
+    sourceIndex: source.index,
+    sourceZone: source.zone ?? rootDroppableId,
+    destinationIndex: destination.index,
+    destinationZone: destination.zone ?? rootDroppableId,
     recordHistory: false,
   });
 
@@ -33,18 +31,27 @@ export const moveComponent = async (
   const resolveComponentData = appStore.getState().resolveComponentData;
   const resolvedData = await resolveComponentData(componentData, "move");
 
-  // Use latest position, in case it has moved
-  const latestItemSelector = getSelectorForId(
-    appStore.getState().state,
-    componentData.props.id
-  );
-  if (!latestItemSelector) return;
+  if (resolvedData.didChange) {
+    // Extract non-slot props for doc update
+    const { id: _resolvedId, ...propsToUpdate } = resolvedData.node.props;
+    const componentConfig =
+      appStore.getState().config.components[resolvedData.node.type];
+    const fields = componentConfig?.fields ?? {};
+    const nonSlotProps: Record<string, any> = {};
+    for (const [k, v] of Object.entries(propsToUpdate)) {
+      if (!(fields[k] && fields[k].type === "slot")) {
+        nonSlotProps[k] = v;
+      }
+    }
 
-  if (resolvedData.didChange)
-    dispatch({
-      type: "replace",
-      data: resolvedData.node,
-      destinationIndex: latestItemSelector.index,
-      destinationZone: latestItemSelector.zone ?? rootDroppableId,
+    appStore.getState().pageDocument.updateProps(id, nonSlotProps);
+    commitDocToStore(appStore, {
+      onAction: {
+        type: "replace",
+        data: resolvedData.node,
+        destinationIndex: 0,
+        destinationZone: "",
+      },
     });
+  }
 };

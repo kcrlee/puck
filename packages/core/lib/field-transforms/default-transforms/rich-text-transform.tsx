@@ -2,7 +2,7 @@
 import { EditorFallback } from "../../../components/RichTextEditor/components/EditorFallback";
 import { RichTextRenderFallback } from "../../../components/RichTextEditor/components/RenderFallback";
 import { FieldTransforms } from "../../../types/API/FieldTransforms";
-import { useAppStoreApi } from "../../../store";
+import { useAppStoreApi, commitDocToStore } from "../../../store";
 import { setDeep } from "../../../lib/data/set-deep";
 import { registerOverlayPortal } from "../../../lib/overlay-portal";
 import {
@@ -15,7 +15,6 @@ import {
   Suspense,
 } from "react";
 import type { Editor as TipTapEditor, JSONContent } from "@tiptap/react";
-import { getSelectorForId } from "../../get-selector-for-id";
 import { RichtextField, UiState } from "../../../types";
 
 const Editor = lazy(() =>
@@ -56,12 +55,7 @@ const InlineEditorWrapper = memo(
       e.preventDefault();
       e.stopPropagation();
 
-      const itemSelector = getSelectorForId(
-        appStoreApi.getState().state,
-        componentId
-      );
-
-      appStoreApi.getState().setUi({ itemSelector });
+      appStoreApi.getState().setUi({ itemSelector: { id: componentId } });
     };
 
     // Register portal once
@@ -77,11 +71,6 @@ const InlineEditorWrapper = memo(
       async (content: string | JSONContent, ui?: Partial<UiState>) => {
         const appStore = appStoreApi.getState();
         const node = appStore.state.indexes.nodes[componentId];
-        const zoneCompound = `${node.parentId}:${node.zone}`;
-        const index =
-          appStore.state.indexes.zones[zoneCompound]?.contentIds.indexOf(
-            componentId
-          );
 
         const newProps = setDeep(node.data.props, propPath, content);
 
@@ -90,11 +79,26 @@ const InlineEditorWrapper = memo(
           "replace"
         );
 
-        appStore.dispatch({
-          type: "replace",
-          data: resolvedData.node,
-          destinationIndex: index,
-          destinationZone: zoneCompound,
+        // Extract non-slot props for doc update
+        const { id: _id, ...propsToUpdate } = resolvedData.node.props;
+        const componentConfig =
+          appStore.config.components[node.data.type];
+        const fields = componentConfig?.fields ?? {};
+        const nonSlotProps: Record<string, any> = {};
+        for (const [k, v] of Object.entries(propsToUpdate)) {
+          if (!(fields[k] && fields[k].type === "slot")) {
+            nonSlotProps[k] = v;
+          }
+        }
+
+        appStore.pageDocument.updateProps(componentId, nonSlotProps);
+        commitDocToStore(appStoreApi, {
+          onAction: {
+            type: "replace",
+            data: resolvedData.node,
+            destinationIndex: 0,
+            destinationZone: "",
+          },
           ui,
         });
       },

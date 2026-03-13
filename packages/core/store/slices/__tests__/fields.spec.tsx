@@ -44,7 +44,7 @@ const selectFirst = (config: Config) => {
         ui: {
           ...appStore.getState().state.ui,
           itemSelector: {
-            index: 0,
+            id: "heading-1",
           },
         },
       },

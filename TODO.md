@@ -108,8 +108,8 @@ The compat bridge materializes Y.Doc state back into Puck's `state.data` + `stat
   - [x] `remove` -> `doc.removeBlock()` — resolve block ID from zone+index via `getBlockIdAtIndex`
   - [x] `move` -> `doc.moveBlock()` — parse source/destination zone compounds
   - [x] `reorder` -> `doc.moveBlock()` — same slot, different index (delegates to move action)
-  - [~] `replace` -> deferred — uses walkTree for nested slot-in-array content the CRDT layer doesn't model yet. Post-dispatch `syncDocFromState` keeps Y.Doc in sync.
-  - [~] `replaceRoot` -> deferred — root props with slot fields need special handling. Post-dispatch `syncDocFromState` keeps Y.Doc in sync.
+  - [~] `replace` -> reducer still exists but callers migrated to `doc.updateProps` + `commitDocToStore` (Phase 4.4). Reducer path retained as fallback; post-dispatch `syncDocFromState` only fires for this action type.
+  - [~] `replaceRoot` -> reducer still exists but callers migrated to `doc.updateRootProps` + `commitDocToStore` (Phase 4.4). Same as `replace`.
   - [x] `duplicate` -> `doc.duplicateBlock()` — deep clone + insert after source
   - [~] `set` -> deferred — wholesale state replacement, post-dispatch `syncDocFromState` keeps Y.Doc in sync. Will simplify when callers migrate (Phase 4/5).
   - [~] `setData` -> deferred — wholesale data replacement, same reasoning as `set`.
@@ -117,7 +117,7 @@ The compat bridge materializes Y.Doc state back into Puck's `state.data` + `stat
   - [~] `unregisterZone` -> deferred — legacy DropZone lifecycle. Same as `registerZone`.
 
 ### Phase 2 verification
-- [x] `yarn test` in `packages/core` — all existing tests pass (171 tests, 31 suites)
+- [x] `yarn test` in `packages/core` — all existing tests pass (172 tests, 31 suites)
 - [ ] `yarn dev` — demo app works identically: insert, move, delete, field edits, undo
 - [x] Y.Doc is being mutated on every dispatch (via `syncDocFromState` after reducer)
 
@@ -142,9 +142,13 @@ The compat bridge materializes Y.Doc state back into Puck's `state.data` + `stat
   `packages/core/reducer/index.ts`
   - [~] `storeInterceptor` still exists but `record()` is no-op, so history recording is effectively dead code. Full removal deferred.
 
-- [ ] **3.3 Simplify initialHistory handling**
-  `packages/core/components/Puck/index.tsx`
-  - [ ] Simplify or remove `initialHistory` prop handling
+- [x] **3.3 Remove initialHistory prop and legacy history API**
+  - [x] Removed `initialHistory` prop from `PuckProps` and `InitialHistory` type
+  - [x] Removed `blendedHistories` construction and `walkAppState` per-history-entry calls
+  - [x] Removed `setHistories`, `setHistoryIndex`, `initialAppState`, `histories`, `index`, `record`, `currentHistory`, `prevHistory`, `nextHistory` from `HistorySlice`
+  - [x] Removed `record` parameter from `createReducer` and `storeInterceptor`
+  - [x] Simplified `useRegisterHistorySlice` to only register hotkeys
+  - [x] Cleaned up `usePuck` history API surface to only expose `back`, `forward`, `hasPast`, `hasFuture`
 
 - [x] **3.4 Keep hotkey bindings**
   `packages/core/store/slices/history.ts` — `useRegisterHistorySlice`
@@ -155,7 +159,8 @@ The compat bridge materializes Y.Doc state back into Puck's `state.data` + `stat
 - [ ] Undo/redo works via keyboard shortcuts (manual testing needed)
 - [ ] Undo only reverts local changes (simulate remote Y.Doc update, confirm it's not undone)
 - [ ] Rapid edits (typing, slider drags) group into single undo steps via `captureTimeout: 500`
-- [x] History tests pass (9 tests covering undo, redo, no-past, no-future, redo-stack-clear, stale-selection-clear, backward-compat)
+- [x] History tests pass (7 tests covering undo, redo, no-past, no-future, redo-stack-clear, stale-selection-clear)
+- [x] All 168 tests pass after removing legacy history API
 
 ---
 
@@ -163,16 +168,17 @@ The compat bridge materializes Y.Doc state back into Puck's `state.data` + `stat
 
 Incremental migration — compat bridge keeps both read paths working simultaneously.
 
-- [ ] **4.1 Change `itemSelector` from position-based to ID-based**
+- [x] **4.1 Change `itemSelector` from position-based to ID-based**
   Critical for collaboration safety — position-based selection shifts when others insert/remove.
-  - [ ] `packages/core/types/AppState.tsx` — change `ItemSelector` type from `{ index, zone }` to `{ id }`
-  - [ ] `packages/core/lib/data/get-item.ts` — look up by ID instead of zone+index
-  - [ ] `packages/core/lib/get-selector-for-id.ts` — simplify (now trivial)
-  - [ ] Update all consumers of `itemSelector` throughout the codebase
+  - [x] `packages/core/lib/data/get-item.ts` — `ItemSelector` changed from `{ index, zone }` to `{ id: string }`, `getItem` does node lookup by ID
+  - [x] `packages/core/lib/get-selector-for-id.ts` — `getSelectorForId` returns `{ id }`, added `getPositionForId` for action dispatch zone+index lookups
+  - [x] Updated all ~24 consumer files: DraggableComponent, DragDropContext, LayerTree, useBreadcrumbs, Fields, InlineTextField, rich-text-transform, insert-component, move-component, use-delete-hotkeys, duplicate action, resolve-and-replace-data, use-puck
+  - [x] All 168 tests pass
 
 - [ ] **4.2 DropZone**
   `packages/core/components/DropZone/index.tsx`
   > Ref: [Architecture § Block Renderer](plans/puck-fork-architecture.md#block-renderer) — BlockRenderer pattern with useBlock + slot iteration
+  > **Blocked:** Current Y.Doc hooks (`useBlock`, `useSlotChildren`) fire on ALL doc changes via `doc.subscribe()` / `observeDeep` on the entire blocks map. Using them in `DropZoneChild` would make re-renders *worse* than current Zustand `useShallow` selectors. Requires per-block granular observation hooks first (see Phase 5 note).
   - [ ] `DropZoneEdit`: Replace `useAppStore(s => s.state.indexes.zones[zoneCompound]?.contentIds)` with `useSlotChildren(parentBlockId, slotName)`
   - [ ] `DropZoneChild`: Replace `useAppStore(s => s.state.indexes.nodes[id]?.flatData.props)` with `useBlock(id)`. Remove `expandNode` call.
   - [ ] Remove `registerZone`/`unregisterZone` dispatch calls
@@ -187,12 +193,17 @@ Incremental migration — compat bridge keeps both read paths working simultaneo
   - [ ] `useSortable` data: derive `zone`, `index`, `path` from Y.Array + parent index
   - [ ] `registerNode` (DOM) stays in Zustand `NodesSlice` — unchanged
 
-- [ ] **4.4 Field Editors**
+- [x] **4.4 Field Editors**
   `packages/core/components/Puck/components/Fields/index.tsx`
   > Ref: [Architecture § Puck Reducer Transformation](plans/puck-fork-architecture.md#puck-reducer-transformation) — `setProp` case becomes `doc.updateProp()`
-  - [ ] `createOnChange`: Replace `dispatch({ type: "replace" })` with `doc.updateProp(blockId, fieldName, value)`
-  - [ ] `resolveComponentData`: writes resolved result via `doc.updateProp` instead of dispatch
-  - [ ] `fieldContextStore`: subscribe to block's Y.Map instead of `appStore` state changes
+  - [x] `createOnChange`: Uses `doc.updateProps(blockId, nonSlotProps)` + `commitDocToStore()` for both selected items and root
+  - [x] `InlineTextField`: Uses `doc.updateProps` + `commitDocToStore` instead of `dispatch({ type: "replace" })`
+  - [x] `rich-text-transform`: Uses `doc.updateProps` + `commitDocToStore` instead of `dispatch({ type: "replace" })`
+  - [x] `insert-component.ts`: Post-resolve replace uses `doc.updateProps` + `commitDocToStore`
+  - [x] `move-component.ts`: Post-resolve replace uses `doc.updateProps` + `commitDocToStore`
+  - [x] `resolve-and-replace-data.ts`: Refactored to accept `AppStoreApi`, uses `doc.updateProps` + `commitDocToStore`
+  - [x] `resolveAndCommitData` in store: Uses `doc.updateProps`/`doc.updateRootProps` + `materializeAppState` directly
+  - [ ] `fieldContextStore`: subscribe to block's Y.Map instead of `appStore` state changes (deferred — requires per-block granular hooks)
 
 - [ ] **4.5 DragDropContext**
   `packages/core/components/DragDropContext/index.tsx`
@@ -205,26 +216,43 @@ Incremental migration — compat bridge keeps both read paths working simultaneo
   - [ ] Edit mode: `DropZoneEditPure` internally uses `useSlotChildren`
   - [ ] Render mode: receives content from `doc.toJSON()` snapshot
 
-- [ ] **4.7 Store slices**
-  - [ ] `PermissionsSlice` (`packages/core/store/slices/permissions.ts`): read parent info from `doc.findParent()`
-  - [ ] `FieldsSlice` (`packages/core/store/slices/fields.ts`): read component data from `doc.getBlock(id)`
+- [~] **4.7 Store slices**
+  - [x] `PermissionsSlice` (`packages/core/store/slices/permissions.ts`): uses `doc.findParent()` for parent ID lookup (falls back to Zustand nodes when doc is stale)
+  - [x] `FieldsSlice` (`packages/core/store/slices/fields.ts`): uses `doc.findParent()` for parent ID lookup (falls back to Zustand nodes when doc is stale)
+  - [ ] Full migration to `doc.getBlock()` for component data deferred — user-facing callbacks expect materialized `ComponentData` shape (slot children as arrays of ComponentData), not `SerializedBlock` (slot child IDs)
 
-- [ ] **4.8 usePuck hook**
+- [~] **4.8 usePuck hook**
   `packages/core/lib/use-puck.ts`
-  - [ ] `appState.data`: materialized from Y.Doc via `toPuckData()` (lazy, cached)
-  - [ ] `getItemById`, `getParentById`, `getSelectorForId`: delegate to PageDocument
-  - [ ] `dispatch`: still works for backward compat; data actions route to Y.Doc
+  - [x] `getItemById`: reads from Y.Doc via `doc.getBlock(id)`, reconstructs ComponentData shape, falls back to Zustand nodes
+  - [x] `getParentById`: uses `doc.findParent(id)` for parent lookup, reads parent data from Zustand nodes
+  - [x] `resolveDataById`/`resolveDataBySelector`: accept `AppStoreApi` (not `getState`), pass through to `resolveAndReplaceData`
+  - [ ] `appState.data`: still uses `makeStatePublic(store.state)` — lazy Y.Doc materialization deferred to Phase 5
+  - [x] `dispatch`: still works for backward compat
 
 ### Phase 4 verification
-- [ ] All existing tests pass
+- [x] All 172 existing tests pass (after Steps 4.1, 4.4, 4.7, 4.8)
+- [x] Core package builds successfully
 - [ ] Manual testing: insert, drag-and-drop, field edits, duplicate, delete, nested slots
-- [ ] Verify surgical re-renders: React DevTools profiler confirms editing one block doesn't re-render siblings
+- [ ] Verify surgical re-renders: React DevTools profiler confirms editing one block doesn't re-render siblings — **blocked on per-block granular Y.Doc hooks (see 4.2 note)**
+
+### Phase 4 — Key APIs added
+- `PageDocument.updateProps(blockId, props)` — batch prop update in single Y.Doc transaction
+- `PageDocument.updateRootProps(props)` — batch root prop update in single Y.Doc transaction
+- `commitDocToStore(appStoreApi, options?)` — materializes Y.Doc → Zustand after direct doc mutations
+- `PageDocumentProvider` wired into Puck component tree (inside `appStoreContext.Provider`)
+- **Critical pattern:** When calling `doc.updateProps`, always filter out slot-type fields (check `config.components[type].fields[k].type === "slot"`) — slots are stored as separate Y.Array structures in Y.Doc
 
 ---
 
 ## Phase 5: Remove Compatibility Bridge
 
 All consumers now read from Y.Doc directly. The materialization step is no longer needed.
+
+- [ ] **5.0 Per-block granular Y.Doc hooks** *(prerequisite for 4.2 DropZone migration)*
+  Current hooks (`useBlock`, `useSlotChildren`) subscribe via `doc.subscribe()` which fires `_notifyObservers()` on ANY Y.Doc change (blocks, rootBlocks, rootSlots, rootProps all trigger it). Need per-block observation:
+  - [ ] `useBlock(id)` should observe only the specific block's Y.Map, not the entire `blocks` Y.Map
+  - [ ] `useSlotChildren(blockId, slotName)` should observe only that slot's Y.Array
+  - [ ] Consider splitting `_observeSlots` into targeted observers per block/slot
 
 - [ ] **5.1 Remove compat bridge materialization**
   - [ ] Remove `materializeAppState` from Y.Doc observation handler in `packages/core/store/index.ts`

@@ -39,29 +39,12 @@ describe("history slice (Y.UndoManager)", () => {
   it("initializes with no undo history", () => {
     const appStore = createTestStore();
 
-    renderHook(() =>
-      useRegisterHistorySlice(appStore, {
-        histories: [{ id: "initial", state: defaultAppState }],
-        index: 0,
-        initialAppState: defaultAppState,
-      })
-    );
+    renderHook(() => useRegisterHistorySlice(appStore));
 
     const { hasPast, hasFuture } = appStore.getState().history;
 
     expect(hasPast()).toBe(false);
     expect(hasFuture()).toBe(false);
-  });
-
-  it("record() is a no-op (Y.UndoManager tracks automatically)", () => {
-    const appStore = createTestStore();
-
-    // record should not throw and should do nothing
-    act(() => {
-      appStore.getState().history.record(defaultAppState);
-    });
-
-    expect(appStore.getState().history.hasPast()).toBe(false);
   });
 
   describe("undo/redo via Y.UndoManager", () => {
@@ -211,7 +194,7 @@ describe("history slice (Y.UndoManager)", () => {
         });
 
         appStore.getState().setUi({
-          itemSelector: { index: 0, zone: "root:default-zone" },
+          itemSelector: { id: "heading-1" },
         });
       });
 
@@ -223,66 +206,6 @@ describe("history slice (Y.UndoManager)", () => {
       });
 
       expect(appStore.getState().selectedItem).toBeNull();
-    });
-  });
-
-  describe("backward-compat methods", () => {
-    it("setHistories() dispatches the latest state", () => {
-      const appStore = createTestStore();
-
-      renderHook(() =>
-        useRegisterHistorySlice(appStore, {
-          histories: [{ id: "init", state: defaultAppState }],
-          index: 0,
-          initialAppState: defaultAppState,
-        })
-      );
-
-      jest.spyOn(appStore.getState(), "dispatch");
-
-      act(() => {
-        appStore.getState().history.setHistories([
-          {
-            id: "1",
-            state: { ...defaultAppState, data: "One" },
-          },
-          {
-            id: "2",
-            state: { ...defaultAppState, data: "Two" },
-          },
-        ]);
-      });
-
-      expect(appStore.getState().dispatch).toHaveBeenCalledWith({
-        type: "set",
-        state: { ...defaultAppState, data: "Two" },
-      });
-    });
-
-    it("setHistoryIndex() dispatches that state", () => {
-      const appStore = createTestStore();
-
-      renderHook(() =>
-        useRegisterHistorySlice(appStore, {
-          histories: [
-            { id: "0", state: { ...defaultAppState, data: "A" } },
-            { id: "1", state: { ...defaultAppState, data: "B" } },
-          ],
-          index: 1,
-          initialAppState: defaultAppState,
-        })
-      );
-
-      jest.spyOn(appStore.getState(), "dispatch");
-
-      act(() => {
-        appStore.getState().history.setHistoryIndex(0);
-      });
-
-      expect(appStore.getState().dispatch).toHaveBeenCalledWith({
-        type: "set",
-        state: { ...defaultAppState, data: "A" },
-      });
     });
   });
 });

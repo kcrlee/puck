@@ -1,7 +1,7 @@
 import { act } from "@testing-library/react";
 import { createAppStore, defaultAppState } from "../../store";
 import { Config } from "../../types";
-import { getItem, ItemSelector } from "../data/get-item";
+import { getItem } from "../data/get-item";
 import { walkAppState } from "../data/walk-app-state";
 import { cache } from "../resolve-component-data";
 import { moveComponent } from "../move-component";
@@ -45,11 +45,11 @@ const config: Config = {
 };
 
 const moveChildTo = (
-  targetItemSelector: ItemSelector,
-  sourceItemSelector: ItemSelector = { zone: "Parent-1:items", index: 0 },
+  target: { zone: string; index: number },
+  source: { zone: string; index: number } = { zone: "Parent-1:items", index: 0 },
   id = "Child-1"
 ) => {
-  moveComponent(id, sourceItemSelector, targetItemSelector, appStore);
+  moveComponent(id, source, target, appStore);
 };
 
 function resetStores() {
@@ -131,7 +131,7 @@ describe("moveComponent", () => {
 
     // Then: ---------------
     const componentAtTarget = getItem(
-      targetItemSelector,
+      { id: "Child-1" },
       appStore.getState().state
     );
     expect(componentAtTarget?.props.id).toEqual("Child-1");

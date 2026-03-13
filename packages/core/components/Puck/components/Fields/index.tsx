@@ -1,11 +1,14 @@
 import { Loader } from "../../../Loader";
-import { rootDroppableId } from "../../../../lib/root-droppable-id";
 import { ItemSelector } from "../../../../lib/data/get-item";
-import { getSelectorForId } from "../../../../lib/get-selector-for-id";
 import { UiState } from "../../../../types";
 import { AutoFieldPrivate } from "../../../AutoField";
 import { fieldContextStore } from "../../../AutoField/store";
-import { AppStore, useAppStore, useAppStoreApi } from "../../../../store";
+import {
+  AppStore,
+  useAppStore,
+  useAppStoreApi,
+  commitDocToStore,
+} from "../../../../store";
 import styles from "./styles.module.css";
 import { getClassNameFactory } from "../../../../lib";
 import {
@@ -35,11 +38,10 @@ const DefaultFields = ({
 const createOnChange =
   (fieldName: string, appStore: StoreApi<AppStore>) =>
   async (value: any, updatedUi?: Partial<UiState>) => {
-    const { dispatch, state, selectedItem, resolveComponentData } =
+    const { dispatch, state, selectedItem, resolveComponentData, pageDocument } =
       appStore.getState();
 
-    const { data, ui } = state;
-    const { itemSelector } = ui;
+    const { data } = state;
 
     // DEPRECATED: root without props object
     const rootProps = data.root.props || data.root;
@@ -47,23 +49,32 @@ const createOnChange =
 
     const newProps = { ...currentProps, [fieldName]: value };
 
-    if (selectedItem && itemSelector) {
+    if (selectedItem) {
       const resolved = await resolveComponentData(
         { ...selectedItem, props: newProps },
         "replace"
       );
 
-      const latestSelector = getSelectorForId(
-        appStore.getState().state,
-        selectedItem.props.id
-      );
-      if (!latestSelector) return;
+      // Extract only non-slot props for updateProps
+      const { id: _id, ...propsToUpdate } = resolved.node.props;
+      const componentConfig =
+        appStore.getState().config.components[selectedItem.type];
+      const fields = componentConfig?.fields ?? {};
+      const nonSlotProps: Record<string, any> = {};
+      for (const [k, v] of Object.entries(propsToUpdate)) {
+        if (!(fields[k] && fields[k].type === "slot")) {
+          nonSlotProps[k] = v;
+        }
+      }
 
-      dispatch({
-        type: "replace",
-        destinationIndex: latestSelector.index,
-        destinationZone: latestSelector.zone || rootDroppableId,
-        data: resolved.node,
+      pageDocument.updateProps(selectedItem.props.id, nonSlotProps);
+      commitDocToStore(appStore, {
+        onAction: {
+          type: "replace",
+          data: resolved.node,
+          destinationIndex: 0,
+          destinationZone: "",
+        },
         ui: updatedUi,
       });
 
@@ -71,16 +82,28 @@ const createOnChange =
     }
 
     if (data.root.props) {
-      dispatch({
-        type: "replaceRoot",
-        root: (
-          await resolveComponentData(
-            { ...data.root, props: newProps },
-            "replace"
-          )
-        ).node,
-        ui: { ...ui, ...updatedUi },
-        recordHistory: true,
+      const resolved = await resolveComponentData(
+        { ...data.root, props: newProps },
+        "replace"
+      );
+
+      // Extract non-slot root props
+      const { id: _id, ...propsToUpdate } = resolved.node.props ?? {};
+      const rootFields = appStore.getState().config.root?.fields ?? {};
+      const nonSlotProps: Record<string, any> = {};
+      for (const [k, v] of Object.entries(propsToUpdate)) {
+        if (!(rootFields[k] && rootFields[k].type === "slot")) {
+          nonSlotProps[k] = v;
+        }
+      }
+
+      pageDocument.updateRootProps(nonSlotProps);
+      commitDocToStore(appStore, {
+        onAction: {
+          type: "replaceRoot",
+          root: resolved.node,
+        },
+        ui: updatedUi,
       });
 
       return;

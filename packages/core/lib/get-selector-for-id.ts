@@ -1,6 +1,22 @@
+import { ItemSelector } from "./data/get-item";
 import { PrivateAppState } from "../types/Internal";
 
-export const getSelectorForId = (state: PrivateAppState, id: string) => {
+export const getSelectorForId = (
+  state: PrivateAppState,
+  id: string
+): ItemSelector | undefined => {
+  const node = state.indexes.nodes[id];
+
+  if (!node) return;
+
+  return { id };
+};
+
+/** Look up the position (zone compound + index) for a block by ID. Used for dispatching position-based actions. */
+export const getPositionForId = (
+  state: PrivateAppState,
+  id: string
+): { zone: string; index: number } | undefined => {
   const node = state.indexes.nodes[id];
 
   if (!node) return;
