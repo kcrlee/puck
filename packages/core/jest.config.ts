@@ -12,9 +12,10 @@ const config: Config = {
     "^.+\\.[tj]sx?$": ["ts-jest", { useESM: true }],
   },
 
-  // Re-enable transform *inside* selected node_modules
+  // Re-enable transform *inside* selected node_modules.
+  // Pattern handles both flat (yarn) and nested (pnpm .pnpm/) layouts.
   transformIgnorePatterns: [
-    "/node_modules/(?!(?:@preact/signals-core|@preact/signals-react|@dnd-kit|yjs|y-protocols|lib0)/)",
+    "node_modules/(?!(?:\\.pnpm/.+/node_modules/)?(?:@preact/signals-core|@preact/signals-react|@dnd-kit|yjs|y-protocols|lib0)/)",
   ],
 
   moduleNameMapper: {

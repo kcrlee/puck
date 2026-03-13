@@ -1,114 +1,181 @@
-<br /><br /><br />
+# Puck + Yjs CRDT Fork
 
-<div align="center">
+> **This is a fork of [Puck](https://github.com/puckeditor/puck)** that replaces the immutable snapshot state layer with [Yjs](https://yjs.dev/) CRDTs, enabling real-time collaborative editing. Includes a [Convex](https://convex.dev/) sync provider for persistence and multi-user sync.
 
-<a href="https://puckeditor.com?utm_source=readme&utm_medium=code&utm_campaign=repo&utm_contents=logo">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://res.cloudinary.com/die3nptcg/image/upload/Puck_Logo_White_RGB_j2rwgg.svg" height="100px" aria-label="Puck logo">
-    <img src="https://res.cloudinary.com/die3nptcg/image/upload/Puck_Logo_Black_RGB_dqsjag.svg" height="100px" aria-label="Puck logo">
-  </picture>
-</a>
+## What changed from upstream Puck
 
-_Create your own AI page builder_
+The `<Puck>` component API is unchanged — `config`, `data`, `onPublish`, `onChange`, and `overrides` all work exactly as before. Under the hood:
 
-[Documentation](https://puckeditor.com/docs?utm_source=readme&utm_medium=code&utm_campaign=repo&utm_contents=docs_link) • [Demo](https://demo.puckeditor.com/edit?utm_source=readme&utm_medium=code&utm_campaign=repo&utm_contents=demo_link) • [Discord](https://discord.gg/V9mDAhuxyZ) • [Contributing](https://github.com/puckeditor/puck/blob/main/CONTRIBUTING.md)
+- **Y.Doc is the sole source of truth** for page data. All reads go through Y.Doc, not `state.data`.
+- **Every edit is a CRDT operation** (insert, move, delete, prop update), so concurrent edits merge automatically.
+- **Undo/redo uses Y.UndoManager** instead of snapshot arrays. Undoing your changes doesn't undo other users' concurrent edits.
+- **Per-block granular reactivity** — editing one block doesn't re-render siblings.
 
-⭐️ Enjoying Puck? Please [leave a star](https://github.com/puckeditor/puck)!
-
-<br />
-
-[![GIF showing a page being created in the Puck Editor, with components being added, arranged, and customized in real time](https://github.com/user-attachments/assets/25e1ae25-ca5e-450f-afa0-01816830b731)](https://demo.puckeditor.com/edit)
-
-</div>
-
-## What is Puck?
-
-Puck is a modular, open-source visual editor for React.js. You can use Puck to build custom drag-and-drop experiences with your own application and React components.
-
-Because Puck is just a React component, it plays well with all React.js environments, including Next.js. You own your data and there’s no vendor lock-in.
-
-Puck is also [licensed under MIT](https://github.com/puckeditor/puck?tab=MIT-1-ov-file#readme), making it suitable for both internal systems and commercial applications.
+No changes are needed in your component configs or render code.
 
 ## Quick start
 
-Install the package:
+### Install from this repo
+
+This fork isn't published to npm. Install it by pointing your package manager at the local build output.
 
 ```sh
-npm i @puckeditor/core --save # or npx create-puck-app my-app
+# 1. Clone and build
+git clone <this-repo-url> puck
+cd puck
+pnpm install
+pnpm build
+
+# 2. In your project, add a dependency on the local package
+# Option A: pnpm link
+cd packages/core && pnpm link --global
+cd /path/to/your/project && pnpm link --global @puckeditor/core
+
+# Option B: file: protocol in package.json
+# In your project's package.json:
+#   "dependencies": {
+#     "@puckeditor/core": "file:/path/to/puck/packages/core"
+#   }
+
+# Option C: pnpm workspace (if puck is a sibling in a monorepo)
+# In your pnpm-workspace.yaml, add the path to puck/packages/core
 ```
 
-Render the editor:
+After any change to the core package, rebuild with `pnpm build` (or `cd packages/core && pnpm build` for just core). The `dist/` output is what consumers import.
+
+### Single-user (no sync)
+
+Works exactly like upstream Puck. No Convex or Yjs knowledge needed.
 
 ```jsx
-// Editor.jsx
-import { Puck } from "@puckeditor/core";
+import { Puck, Render } from "@puckeditor/core";
 import "@puckeditor/core/puck.css";
 
-// Create Puck component config
 const config = {
   components: {
-    HeadingBlock: {
-      fields: {
-        children: {
-          type: "text",
-        },
-      },
-      render: ({ children }) => {
-        return <h1>{children}</h1>;
-      },
+    Heading: {
+      fields: { text: { type: "text" } },
+      render: ({ text }) => <h1>{text}</h1>,
     },
   },
 };
 
-// Describe the initial data
-const initialData = {};
+// Editor
+<Puck config={config} data={{}} onPublish={(data) => save(data)} />
 
-// Save the data to your database
-const save = (data) => {};
-
-// Render Puck editor
-export function Editor() {
-  return <Puck config={config} data={initialData} onPublish={save} />;
-}
+// Render
+<Render config={config} data={savedData} />
 ```
 
-Render the page:
+The CRDT layer runs internally. `onChange` and `onPublish` still emit standard Puck `Data` objects — serialize them however you like.
 
-```jsx
-// Page.jsx
-import { Render } from "@puckeditor/core";
-import "@puckeditor/core/puck.css";
+### Multi-user with Convex
 
-export function Page() {
-  return <Render config={config} data={data} />;
-}
-```
+The `apps/demo` directory includes a full Convex integration with real-time sync, presence indicators, and a publish flow.
 
-## Recipes
-
-Use `create-puck-app` to quickly spin up a a pre-configured app based on our provided [recipes](https://github.com/puckeditor/puck/tree/main/recipes):
+#### 1. Install dependencies
 
 ```sh
-npx create-puck-app my-app
+pnpm install
 ```
 
-Available recipes include:
+#### 2. Set up Convex
 
-- [**next**](https://github.com/puckeditor/puck/tree/main/recipes/next): Next.js example, using App Router and static page generation
-- [**remix**](https://github.com/puckeditor/puck/tree/main/recipes/remix): Remix Run v2 example, using dynamic routes at root-level
-- [**react-router**](https://github.com/puckeditor/puck/tree/main/recipes/react-router): React Router v7 app example, using dynamic routes to create pages at any level
+```sh
+cd apps/demo
+npx convex dev
+```
 
-## Community
+This creates a Convex project, generates types in `convex/_generated/`, and prints your deployment URL.
 
-- [Discord server](https://discord.gg/D9e4E3MQVZ) for discussions
-- [awesome-puck](https://github.com/puckeditor/awesome-puck) community repo for plugins, custom fields & more
+#### 3. Configure environment
 
-## Get support
+Create `apps/demo/.env.local`:
 
-If you have any questions about Puck, please open a [GitHub issue](https://github.com/puckeditor/puck/issues) or join us on [Discord](https://discord.gg/D9e4E3MQVZ).
+```
+NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
+```
 
-Or [book a discovery call](https://app.cal.com/chrisvxd/puck-enquiry/) for hands-on support and consultancy.
+#### 4. Run the demo
+
+```sh
+pnpm dev
+```
+
+Open two browser tabs to the same page's `/edit` URL. Edits sync in real-time. You'll see:
+- Colored borders on blocks being edited by other users
+- Avatar dots in the header showing active editors
+- Independent undo/redo per user
+
+When `NEXT_PUBLIC_CONVEX_URL` is not set, the demo falls back to localStorage (single-user, no sync).
+
+## Architecture
+
+```
+@puckeditor/core
+  packages/core/crdt/
+    PageDocument.ts    ← Y.Doc wrapper (addBlock, moveBlock, updateProps, undo/redo)
+    hooks.ts           ← useBlock, useSlotChildren, useRootProps (granular Y.Doc subscriptions)
+    sync.ts            ← syncDocFromState (Puck Data → Y.Doc, used by set/setData actions)
+    block-data.ts      ← blockToComponentData (Y.Doc → ComponentData)
+    context.tsx         ← PageDocumentProvider (React context)
+
+apps/demo/convex/
+    schema.ts          ← pages + presence tables
+    pages.ts           ← syncUpdate, getYjsState, create, publish, getPublished
+    presence.ts        ← update, remove, getForPage
+    compact.ts         ← nightly Y.Doc compaction (>5MB)
+
+apps/demo/lib/
+    convex-yjs-provider.ts   ← ConvexYjsProvider (Y.Doc ↔ Convex sync)
+    use-convex-page.ts       ← useConvexPage hook (lifecycle management)
+    use-presence.ts          ← usePresence hook (heartbeat + selection sync)
+    presence-overlay.tsx     ← PresenceOverlay + PresenceAvatars components
+```
+
+### How sync works
+
+1. User edits a block → `doc.updateProps()` mutates the local Y.Doc
+2. Y.Doc emits an `update` event with a binary delta
+3. `ConvexYjsProvider` sends the delta to Convex via `syncUpdate` mutation
+4. Convex merges the delta with stored state using `Y.mergeUpdates`
+5. Other clients receive the merged state via reactive `getYjsState` query
+6. Remote updates are applied with origin `'remote'` so Y.UndoManager ignores them
+
+### How presence works
+
+1. `usePresence` sends a heartbeat to Convex every 10 seconds
+2. On selection change, `PresenceSync` sends the selected block ID
+3. `getForPage` query returns all active users (TTL 30s), filtering stale entries
+4. `PresenceOverlay` renders colored borders on blocks edited by others
+5. `PresenceAvatars` renders user dots in the editor header
+
+## Development
+
+```sh
+pnpm install          # install all dependencies
+pnpm build            # build all packages
+pnpm dev              # start demo app dev server
+pnpm test             # run all tests
+pnpm lint             # lint all packages
+```
+
+Run core package tests directly (faster iteration):
+
+```sh
+npx jest --config packages/core/jest.config.ts
+```
+
+## Repository structure
+
+| Path | Description |
+|------|-------------|
+| `packages/core` | Main editor package (components, state, reducer, CRDT layer) |
+| `packages/plugin-*` | Editor plugins |
+| `apps/demo` | Demo app with Convex sync |
+| `plans/puck-fork-architecture.md` | Design rationale for the CRDT migration |
+| `TODO.md` | Phase-by-phase task tracker |
 
 ## License
 
-MIT © [The Puck Contributors](https://github.com/puckeditor/puck/graphs/contributors)
+MIT

@@ -4,7 +4,7 @@ Puck is a visual page editor for React. This is a fork adding Yjs CRDT-based sta
 
 ## Repository Structure
 
-Monorepo managed by Turborepo with Yarn 1.x.
+Monorepo managed by Turborepo with pnpm.
 
 - `packages/core` — Main editor package (components, state, reducer, CRDT layer)
 - `packages/plugin-*` — Editor plugins
@@ -12,15 +12,15 @@ Monorepo managed by Turborepo with Yarn 1.x.
 
 ## Common Commands
 
-- `yarn install` — Required before running tests (npx jest fails without local node_modules)
-- `yarn build` — Build all packages (turbo)
-- `yarn dev` — Dev server for demo app
-- `yarn test` — Run all tests (turbo)
+- `pnpm install` — Required before running tests
+- `pnpm build` — Build all packages (turbo)
+- `pnpm dev` — Dev server for demo app
+- `pnpm test` — Run all tests (turbo)
 - `npx jest --config packages/core/jest.config.ts` — Run core package tests directly (faster iteration)
 - `npx jest --config packages/core/jest.config.ts -- path/to/test.spec.ts` — Run a single test file
 - `npx jest -u --config packages/core/jest.config.ts` — Update snapshots after AppStore type changes
-- `yarn lint` — Lint all packages
-- `yarn format` — Format with Prettier
+- `pnpm lint` — Lint all packages
+- `pnpm format` — Format with Prettier
 
 ## Code Style
 

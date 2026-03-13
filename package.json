@@ -6,14 +6,14 @@
     "lint": "turbo run lint",
     "format:check": "prettier --check \"**/*.{ts,tsx,md,mdx,css}\"",
     "format": "prettier --write \"**/*.{ts,tsx,md,mdx,css}\"",
-    "release": "yarn release:prepare && yarn changelog && yarn release-commit",
-    "release:prepare": "git fetch --tags && conventional-recommended-bump -p angular | xargs yarn version:auto $1",
-    "release:canary": "yarn release:prepare && node scripts/get-unstable-version canary | xargs yarn version:auto $1",
+    "release": "pnpm release:prepare && pnpm changelog && pnpm release-commit",
+    "release:prepare": "git fetch --tags && conventional-recommended-bump -p angular | xargs pnpm version:auto $1",
+    "release:canary": "pnpm release:prepare && node scripts/get-unstable-version canary | xargs pnpm version:auto $1",
     "release-commit": "git add -u && git commit -m \"release: v${npm_package_version}\"",
     "smoke": "node scripts/e2e/smoke.mjs",
     "test": "turbo run test",
     "version": "lerna version --force-publish -y --no-push --no-changelog --no-git-tag-version $npm_package_version",
-    "version:auto": "yarn version --no-git-tag-version --new-version $1",
+    "version:auto": "npm version --no-git-tag-version $1",
     "changelog": "node scripts/create-changelog"
   },
   "devDependencies": {
@@ -22,7 +22,7 @@
     "conventional-changelog-angular": "^4.0.0",
     "conventional-recommended-bump": "^6.0.5",
     "eslint": "^7.32.0",
-    "eslint-config-custom": "*",
+    "eslint-config-custom": "workspace:*",
     "lerna": "^9.0.0",
     "prettier": "^2.5.1",
     "puppeteer": "^24.8.2",
@@ -31,12 +31,7 @@
     "turbo": "^2.5.8"
   },
   "name": "puck-repo",
-  "packageManager": "yarn@1.22.19",
-  "workspaces": [
-    "apps/*",
-    "recipes/*",
-    "packages/*"
-  ],
+  "packageManager": "pnpm@10.11.0",
   "version": "0.21.1",
   "engines": {
     "node": ">=20.0.0"

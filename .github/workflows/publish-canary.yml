@@ -22,11 +22,14 @@ jobs:
           node-version: 20
           registry-url: "https://registry.npmjs.org"
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Install dependencies
-        run: yarn
+        run: pnpm install
 
       - name: Run release script
-        run: yarn release:canary
+        run: pnpm release:canary
 
       - name: Publish all packages
         run: ./scripts/publish.sh canary

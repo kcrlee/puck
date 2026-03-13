@@ -133,7 +133,7 @@ When `NEXT_PUBLIC_CONVEX_URL` is not set, the demo app falls back to localStorag
 
 ### Phase 6 verification
 
-- [ ] `npx convex dev` + `yarn dev` starts without errors (requires Convex project setup)
+- [ ] `npx convex dev` + `pnpm dev` starts without errors (requires Convex project setup)
 - [ ] Two browser tabs editing the same page: changes sync in real-time
 - [ ] Undo in one tab doesn't revert the other tab's changes
 - [ ] Refresh a tab: state restored from Convex yjsState
