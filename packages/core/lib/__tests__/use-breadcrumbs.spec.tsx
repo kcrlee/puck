@@ -4,6 +4,7 @@ import { createAppStore, appStoreContext } from "../../store";
 import { ComponentData, Config } from "../../types";
 import { PropsWithChildren } from "react";
 import { walkAppState } from "../data/walk-app-state";
+import { syncDocFromState } from "../../crdt/sync";
 
 const appStore = createAppStore();
 
@@ -74,6 +75,7 @@ describe("useBreadcrumbs", () => {
       ),
       selectedItem: testItem2,
     });
+    syncDocFromState(appStore.getState().pageDocument, appStore.getState().state.data, config);
 
     let result: any;
 
@@ -136,6 +138,7 @@ describe("useBreadcrumbs", () => {
       ),
       selectedItem: testItem2,
     });
+    syncDocFromState(appStore.getState().pageDocument, appStore.getState().state.data, config);
 
     let result: any;
 
@@ -196,6 +199,7 @@ describe("useBreadcrumbs", () => {
       ),
       selectedItem: testItem2,
     });
+    syncDocFromState(appStore.getState().pageDocument, appStore.getState().state.data, config);
 
     let result: any;
 

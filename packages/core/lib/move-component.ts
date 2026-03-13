@@ -1,5 +1,7 @@
 import { useAppStoreApi, commitDocToStore } from "../store";
 import { rootDroppableId } from "./root-droppable-id";
+import { syncDocFromState } from "../crdt/sync";
+import { parseZoneCompound } from "../crdt/dispatch";
 
 /**
  * Moves a component, resolves its data, and updates the appStore state.
@@ -15,18 +17,31 @@ export const moveComponent = async (
   destination: { zone: string; index: number },
   appStore: ReturnType<typeof useAppStoreApi>
 ) => {
-  const dispatch = appStore.getState().dispatch;
-  dispatch({
-    type: "move",
-    sourceIndex: source.index,
-    sourceZone: source.zone ?? rootDroppableId,
-    destinationIndex: destination.index,
-    destinationZone: destination.zone ?? rootDroppableId,
-    recordHistory: false,
+  const doc = appStore.getState().pageDocument;
+  const config = appStore.getState().config;
+  const sourceZone = source.zone ?? rootDroppableId;
+  const destinationZone = destination.zone ?? rootDroppableId;
+
+  // Pre-sync doc to handle any external state changes
+  syncDocFromState(doc, appStore.getState().state.data, config);
+
+  // Move block directly in Y.Doc
+  const target = parseZoneCompound(destinationZone);
+  doc.moveBlock(id, target, destination.index);
+
+  commitDocToStore(appStore, {
+    onAction: {
+      type: "move",
+      sourceIndex: source.index,
+      sourceZone,
+      destinationIndex: destination.index,
+      destinationZone,
+    },
   });
 
-  const componentData = appStore.getState().state.indexes.nodes[id]?.data;
-  if (!componentData) return;
+  const block = doc.getBlock(id);
+  if (!block) return;
+  const componentData = { type: block.type, props: { ...block.props, id: block.id } };
 
   const resolveComponentData = appStore.getState().resolveComponentData;
   const resolvedData = await resolveComponentData(componentData, "move");
@@ -34,8 +49,7 @@ export const moveComponent = async (
   if (resolvedData.didChange) {
     // Extract non-slot props for doc update
     const { id: _resolvedId, ...propsToUpdate } = resolvedData.node.props;
-    const componentConfig =
-      appStore.getState().config.components[resolvedData.node.type];
+    const componentConfig = config.components[resolvedData.node.type];
     const fields = componentConfig?.fields ?? {};
     const nonSlotProps: Record<string, any> = {};
     for (const [k, v] of Object.entries(propsToUpdate)) {

@@ -70,19 +70,22 @@ const InlineEditorWrapper = memo(
     const handleChange = useCallback(
       async (content: string | JSONContent, ui?: Partial<UiState>) => {
         const appStore = appStoreApi.getState();
-        const node = appStore.state.indexes.nodes[componentId];
+        const doc = appStore.pageDocument;
+        const block = doc.getBlock(componentId);
+        if (!block) return;
 
-        const newProps = setDeep(node.data.props, propPath, content);
+        const currentProps = { ...block.props, id: block.id };
+        const newProps = setDeep(currentProps, propPath, content);
 
         const resolvedData = await appStore.resolveComponentData(
-          { ...node.data, props: newProps },
+          { type: block.type, props: newProps },
           "replace"
         );
 
         // Extract non-slot props for doc update
         const { id: _id, ...propsToUpdate } = resolvedData.node.props;
         const componentConfig =
-          appStore.config.components[node.data.type];
+          appStore.config.components[block.type];
         const fields = componentConfig?.fields ?? {};
         const nonSlotProps: Record<string, any> = {};
         for (const [k, v] of Object.entries(propsToUpdate)) {

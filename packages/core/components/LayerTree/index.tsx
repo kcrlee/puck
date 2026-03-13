@@ -6,13 +6,14 @@ import { ItemSelector } from "../../lib/data/get-item";
 import { scrollIntoView } from "../../lib/scroll-into-view";
 import { ChevronDown, LayoutGrid, Layers, Type } from "lucide-react";
 import { rootAreaId, rootDroppableId } from "../../lib/root-droppable-id";
-import { useCallback, useContext } from "react";
+import { useCallback, useContext, useMemo } from "react";
 import { ZoneStoreContext } from "../DropZone/context";
 import { getFrame } from "../../lib/get-frame";
 import { onScrollEnd } from "../../lib/on-scroll-end";
 import { useAppStore } from "../../store";
-import { useShallow } from "zustand/react/shallow";
 import { useContextStore } from "../../lib/use-context-store";
+import { useBlock, useSlotChildren } from "../../crdt/hooks";
+import { usePageDocument } from "../../crdt/context";
 
 const getClassName = getClassNameFactory("LayerTree", styles);
 const getClassNameLayer = getClassNameFactory("Layer", styles);
@@ -36,15 +37,15 @@ const Layer = ({
 
   const isSelected = selecedItemId === itemId;
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const nodeData = useAppStore((s) => s.state.indexes.nodes[itemId]);
+  const block = useBlock(itemId);
 
-  const zonesForItem = useAppStore(
-    useShallow((s) =>
-      Object.keys(s.state.indexes.zones).filter(
-        (z) => z.split(":")[0] === itemId
-      )
-    )
+  // Derive zone compounds from block's slot names (O(1) vs scanning all zones)
+  const zonesForItem = useMemo(
+    () =>
+      block
+        ? Object.keys(block.slots).map((slotName) => `${itemId}:${slotName}`)
+        : [],
+    [block, itemId]
   );
 
   const containsZone = zonesForItem.length > 0;
@@ -55,21 +56,24 @@ const Layer = ({
     (s) => s.hoveringComponent === itemId
   );
 
+  const doc = usePageDocument();
   const childIsSelected = useAppStore((s) => {
-    const selectedData = s.state.indexes.nodes[s.selectedItem?.props.id];
+    const selectedId = s.selectedItem?.props.id;
+    if (!selectedId) return false;
 
-    return (
-      selectedData?.path.some((candidate) => {
-        const [candidateId] = candidate.split(":");
-
-        return candidateId === itemId;
-      }) ?? false
-    );
+    // Walk up the ancestor chain via Y.Doc parent index
+    let ancestor = doc.findParent(selectedId);
+    while (ancestor) {
+      if (ancestor.parentId === itemId) return true;
+      ancestor = doc.findParent(ancestor.parentId);
+    }
+    return false;
   });
 
+  const blockType = block?.type ?? "";
   const componentConfig: ComponentConfig | undefined =
-    config.components[nodeData.data.type];
-  const label = componentConfig?.["label"] ?? nodeData.data.type.toString();
+    config.components[blockType];
+  const label = componentConfig?.["label"] ?? blockType;
 
   return (
     <li
@@ -126,8 +130,8 @@ const Layer = ({
           )}
           <div className={getClassNameLayer("title")}>
             <div className={getClassNameLayer("icon")}>
-              {nodeData.data.type === "Text" ||
-              nodeData.data.type === "Heading" ? (
+              {blockType === "Text" ||
+              blockType === "Heading" ? (
                 <Type size="16" />
               ) : (
                 <LayoutGrid size="16" />
@@ -154,15 +158,17 @@ export const LayerTree = ({
   label?: string;
   zoneCompound: string;
 }) => {
-  // Use slot label if provided
+  const [parentId, slotId] = zoneCompound.split(":");
+
+  // Use slot label if provided, otherwise derive from config
+  // useBlock("root") returns null (root is not a regular block), which is fine — falls through to s.config.root
+  const parentBlock = useBlock(parentId);
   const label = useAppStore((s) => {
     if (_label) return _label;
 
     if (zoneCompound === rootDroppableId) return;
 
-    const [componentId, slotId] = zoneCompound.split(":");
-
-    const componentType = s.state.indexes.nodes[componentId]?.data.type;
+    const componentType = parentBlock?.type;
 
     const configForComponent =
       componentType && componentType !== rootAreaId
@@ -172,11 +178,8 @@ export const LayerTree = ({
     return configForComponent?.fields?.[slotId]?.label ?? slotId;
   });
 
-  const contentIds = useAppStore(
-    useShallow((s) =>
-      zoneCompound ? s.state.indexes.zones[zoneCompound]?.contentIds ?? [] : []
-    )
-  );
+  // Read content IDs from Y.Doc for granular reactivity
+  const contentIds = useSlotChildren(parentId, slotId || "default-zone");
 
   return (
     <>

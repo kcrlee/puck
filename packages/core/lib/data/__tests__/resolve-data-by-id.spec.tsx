@@ -4,6 +4,7 @@ import { Config } from "../../../types";
 import { cache } from "../../resolve-component-data";
 import { resolveDataById } from "../resolve-data-by-id";
 import { walkAppState } from "../walk-app-state";
+import { syncDocFromState } from "../../../crdt/sync";
 
 const appStore = createAppStore();
 
@@ -82,6 +83,10 @@ function resetStores() {
     },
     true
   );
+
+  // Sync Y.Doc so pageDocument reads see the data
+  const s = appStore.getState();
+  syncDocFromState(s.pageDocument, s.state.data, config);
 }
 
 describe("resolveDataById", () => {

@@ -100,7 +100,7 @@ export const generateUsePuck = (
       }
       return store.state.indexes.nodes[id]?.data;
     },
-    getSelectorForId: (id) => getSelectorForId(store.state, id),
+    getSelectorForId: (id) => getSelectorForId(appStoreApi.getState().pageDocument, id),
     getParentById: (id) => {
       // Use Y.Doc parent index when available
       const doc = appStoreApi.getState().pageDocument;

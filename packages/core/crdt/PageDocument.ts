@@ -29,6 +29,10 @@ export class PageDocument {
 
   private _parentIndex: ParentIndex = new Map();
   private _observers: Set<() => void> = new Set();
+  private _blockObservers: Map<string, Set<() => void>> = new Map();
+  private _slotObservers: Map<string, Set<() => void>> = new Map();
+  private _rootBlocksObservers: Set<() => void> = new Set();
+  private _rootPropsObservers: Set<() => void> = new Set();
   private _config: Config;
 
   constructor(ydoc?: Y.Doc, config?: Config) {
@@ -117,7 +121,12 @@ export class PageDocument {
   }
 
   getSlotChildren(blockId: string, slotName: string): string[] {
-    // Root slots are stored in rootSlots, not in blocks
+    // Root default-zone content is stored in rootBlocks
+    if (blockId === "root" && slotName === "default-zone") {
+      return this.rootBlocks.toArray();
+    }
+
+    // Other root slots are stored in rootSlots
     if (blockId === "root") {
       const arr = this.rootSlots.get(slotName);
       return arr ? arr.toArray() : [];
@@ -151,6 +160,24 @@ export class PageDocument {
     const entry = this._parentIndex.get(id);
     if (!entry || entry.parentId === null) return null;
     return { parentId: entry.parentId, slotName: entry.slotName };
+  }
+
+  /**
+   * Returns the ancestry path as zone compound strings from root to this block.
+   * E.g., ["root:default-zone", "card1:body"] for a block nested inside card1's body slot.
+   */
+  getPath(id: string): string[] {
+    const path: string[] = [];
+    let current = id;
+    while (true) {
+      const entry = this._parentIndex.get(current);
+      if (!entry) break;
+      const parentId = entry.parentId ?? "root";
+      path.unshift(`${parentId}:${entry.slotName}`);
+      if (entry.parentId === null) break;
+      current = entry.parentId;
+    }
+    return path;
   }
 
   getAllBlockIds(): string[] {
@@ -325,9 +352,81 @@ export class PageDocument {
     };
   }
 
+  /**
+   * Subscribe to changes for a specific block (props, slots, add/remove).
+   */
+  subscribeBlock(blockId: string, fn: () => void): () => void {
+    let set = this._blockObservers.get(blockId);
+    if (!set) {
+      set = new Set();
+      this._blockObservers.set(blockId, set);
+    }
+    set.add(fn);
+    return () => {
+      set!.delete(fn);
+      if (set!.size === 0) this._blockObservers.delete(blockId);
+    };
+  }
+
+  /**
+   * Subscribe to changes for a specific slot's child array.
+   */
+  subscribeSlot(blockId: string, slotName: string, fn: () => void): () => void {
+    // Root default-zone is backed by rootBlocks
+    if (blockId === "root" && slotName === "default-zone") {
+      return this.subscribeRootBlocks(fn);
+    }
+
+    const key = `${blockId}:${slotName}`;
+    let set = this._slotObservers.get(key);
+    if (!set) {
+      set = new Set();
+      this._slotObservers.set(key, set);
+    }
+    set.add(fn);
+    return () => {
+      set!.delete(fn);
+      if (set!.size === 0) this._slotObservers.delete(key);
+    };
+  }
+
+  /**
+   * Subscribe to changes in the root block ordering.
+   */
+  subscribeRootBlocks(fn: () => void): () => void {
+    this._rootBlocksObservers.add(fn);
+    return () => {
+      this._rootBlocksObservers.delete(fn);
+    };
+  }
+
+  /**
+   * Subscribe to changes in root/page-level props.
+   */
+  subscribeRootProps(fn: () => void): () => void {
+    this._rootPropsObservers.add(fn);
+    return () => {
+      this._rootPropsObservers.delete(fn);
+    };
+  }
+
   private _notifyObservers(): void {
     for (const fn of this._observers) {
       fn();
+    }
+  }
+
+  private _notifyBlockObservers(blockId: string): void {
+    const observers = this._blockObservers.get(blockId);
+    if (observers) {
+      for (const fn of observers) fn();
+    }
+  }
+
+  private _notifySlotObservers(blockId: string, slotName: string): void {
+    const observers = this._slotObservers.get(`${blockId}:${slotName}`);
+    if (observers) {
+      for (const fn of observers) fn();
     }
   }
 
@@ -686,6 +785,10 @@ export class PageDocument {
   destroy(): void {
     this.undoManager.destroy();
     this._observers.clear();
+    this._blockObservers.clear();
+    this._slotObservers.clear();
+    this._rootBlocksObservers.clear();
+    this._rootPropsObservers.clear();
     this.ydoc.destroy();
   }
 
@@ -975,23 +1078,81 @@ export class PageDocument {
     // Observe rootBlocks changes
     this.rootBlocks.observeDeep(() => {
       this._rebuildParentIndex();
+      for (const fn of this._rootBlocksObservers) fn();
       this._notifyObservers();
     });
 
     // Observe root slot children
-    this.rootSlots.observeDeep(() => {
+    this.rootSlots.observeDeep((events) => {
       this._rebuildParentIndex();
+
+      // Route to per-slot observers for root slots
+      for (const event of events) {
+        const path = event.path;
+        if (path.length === 0 && event.keys) {
+          // Slot added/removed at top level
+          for (const key of event.keys.keys()) {
+            this._notifySlotObservers("root", key);
+          }
+        } else if (path.length >= 1) {
+          // Change within a specific root slot
+          this._notifySlotObservers("root", path[0] as string);
+        }
+      }
+
       this._notifyObservers();
     });
 
-    // Observe blocks map for additions/deletions and deep changes in slots
-    this.blocks.observeDeep(() => {
+    // Observe blocks map for additions/deletions and deep changes
+    this.blocks.observeDeep((events) => {
       this._rebuildParentIndex();
+
+      // Route to per-block and per-slot observers
+      const notifiedBlocks = new Set<string>();
+      const notifiedSlots = new Set<string>();
+
+      for (const event of events) {
+        const path = event.path;
+        if (path.length === 0 && event.keys) {
+          // Top-level: blocks added/removed
+          for (const key of event.keys.keys()) {
+            if (!notifiedBlocks.has(key)) {
+              notifiedBlocks.add(key);
+              this._notifyBlockObservers(key);
+            }
+          }
+        } else if (path.length >= 1) {
+          const blockId = path[0] as string;
+          if (!notifiedBlocks.has(blockId)) {
+            notifiedBlocks.add(blockId);
+            this._notifyBlockObservers(blockId);
+          }
+          // Check for slot-specific changes: path like [blockId, "slots", slotName, ...]
+          if (path.length >= 3 && path[1] === "slots") {
+            const slotKey = `${blockId}:${path[2]}`;
+            if (!notifiedSlots.has(slotKey)) {
+              notifiedSlots.add(slotKey);
+              this._notifySlotObservers(blockId, path[2] as string);
+            }
+          } else if (path.length === 2 && path[1] === "slots" && event.keys) {
+            // Slot map keys changed (slot added/removed on this block)
+            for (const key of event.keys.keys()) {
+              const slotKey = `${blockId}:${key}`;
+              if (!notifiedSlots.has(slotKey)) {
+                notifiedSlots.add(slotKey);
+                this._notifySlotObservers(blockId, key);
+              }
+            }
+          }
+        }
+      }
+
       this._notifyObservers();
     });
 
     // Observe root props changes
     this.rootProps.observeDeep(() => {
+      for (const fn of this._rootPropsObservers) fn();
       this._notifyObservers();
     });
   }

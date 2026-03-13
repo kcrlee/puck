@@ -200,4 +200,140 @@ describe("CRDT hooks", () => {
       expect(result.current).toEqual([]);
     });
   });
+
+  describe("granular observation", () => {
+    it("useBlock does not re-render when a different block changes", () => {
+      let renderCount = 0;
+
+      const { result } = renderHook(
+        () => {
+          renderCount++;
+          return useBlock("h1");
+        },
+        { wrapper: createWrapper(doc) }
+      );
+
+      const initialRenderCount = renderCount;
+      expect(result.current?.props.text).toBe("Hello");
+
+      // Modify a DIFFERENT block (card1)
+      act(() => {
+        doc.updateProp("card1", "title", "Updated Card");
+      });
+
+      // useBlock("h1") should NOT have re-rendered
+      expect(renderCount).toBe(initialRenderCount);
+      expect(result.current?.props.text).toBe("Hello");
+
+      // Modify THIS block (h1) — should re-render
+      act(() => {
+        doc.updateProp("h1", "text", "Updated");
+      });
+
+      expect(renderCount).toBe(initialRenderCount + 1);
+      expect(result.current?.props.text).toBe("Updated");
+    });
+
+    it("useSlotChildren does not re-render when a different slot changes", () => {
+      // Add a second slot to test isolation
+      doc.addBlock(
+        "Card",
+        { title: "Card 2" },
+        { items: [] },
+        { parentId: null, slotName: "default-zone" },
+        2,
+        "card2"
+      );
+
+      let renderCount = 0;
+
+      const { result } = renderHook(
+        () => {
+          renderCount++;
+          return useSlotChildren("card1", "body");
+        },
+        { wrapper: createWrapper(doc) }
+      );
+
+      const initialRenderCount = renderCount;
+      expect(result.current).toEqual(["h2"]);
+
+      // Add a child to a DIFFERENT block's slot (card2:items)
+      act(() => {
+        doc.addBlock(
+          "Heading",
+          { text: "In card2" },
+          {},
+          { parentId: "card2", slotName: "items" },
+          0,
+          "h-card2"
+        );
+      });
+
+      // useSlotChildren("card1", "body") should NOT have re-rendered
+      expect(renderCount).toBe(initialRenderCount);
+      expect(result.current).toEqual(["h2"]);
+
+      // Add a child to THIS slot (card1:body) — should re-render
+      act(() => {
+        doc.addBlock(
+          "Heading",
+          { text: "New child" },
+          {},
+          { parentId: "card1", slotName: "body" },
+          1,
+          "h3"
+        );
+      });
+
+      expect(renderCount).toBe(initialRenderCount + 1);
+      expect(result.current).toEqual(["h2", "h3"]);
+    });
+
+    it("useRootBlockIds does not re-render when a block's props change", () => {
+      let renderCount = 0;
+
+      const { result } = renderHook(
+        () => {
+          renderCount++;
+          return useRootBlockIds();
+        },
+        { wrapper: createWrapper(doc) }
+      );
+
+      const initialRenderCount = renderCount;
+      expect(result.current).toEqual(["h1", "card1"]);
+
+      // Modify a block's props (should NOT trigger root block IDs re-render)
+      act(() => {
+        doc.updateProp("h1", "text", "Changed");
+      });
+
+      expect(renderCount).toBe(initialRenderCount);
+      expect(result.current).toEqual(["h1", "card1"]);
+    });
+
+    it("useRootProps does not re-render when a block changes", () => {
+      let renderCount = 0;
+
+      const { result } = renderHook(
+        () => {
+          renderCount++;
+          return useRootProps();
+        },
+        { wrapper: createWrapper(doc) }
+      );
+
+      const initialRenderCount = renderCount;
+      expect(result.current.title).toBe("Test Page");
+
+      // Modify a block (should NOT trigger root props re-render)
+      act(() => {
+        doc.updateProp("h1", "text", "Changed");
+      });
+
+      expect(renderCount).toBe(initialRenderCount);
+      expect(result.current.title).toBe("Test Page");
+    });
+  });
 });

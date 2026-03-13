@@ -1,13 +1,21 @@
+import { useMemo } from "react";
 import { useAppStore, useAppStoreApi } from "../store";
+import { ComponentData } from "../types";
 
 export const useParent = () => {
   const appStore = useAppStoreApi();
+  const selectedId = useAppStore((s) => s.selectedItem?.props.id);
 
-  const selectedItem = appStore.getState().selectedItem;
-  const parent = useAppStore((s) => {
-    const node = s.state.indexes.nodes[selectedItem?.props.id];
-    return node?.parentId ? s.state.indexes.nodes[node.parentId] : null;
-  });
-
-  return parent?.data ?? null;
+  return useMemo(() => {
+    if (!selectedId) return null;
+    const doc = appStore.getState().pageDocument;
+    const parentInfo = doc.findParent(selectedId);
+    if (!parentInfo) return null;
+    const parentBlock = doc.getBlock(parentInfo.parentId);
+    if (!parentBlock) return null;
+    return {
+      type: parentBlock.type,
+      props: { ...parentBlock.props, id: parentBlock.id },
+    } as ComponentData;
+  }, [appStore, selectedId]);
 };

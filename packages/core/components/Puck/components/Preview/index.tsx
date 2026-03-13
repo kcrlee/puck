@@ -10,6 +10,7 @@ import { Render } from "../../../Render";
 import { BubbledPointerEvent } from "../../../../lib/bubble-pointer-event";
 import { useSlots } from "../../../../lib/use-slots";
 import { useRichtextProps } from "../../../RichTextEditor/lib/use-richtext-props";
+import { useRootProps } from "../../../../crdt/hooks";
 
 const getClassName = getClassNameFactory("PuckPreview", styles);
 
@@ -67,7 +68,7 @@ const useBubbleIframeEvents = (ref: RefObject<HTMLIFrameElement | null>) => {
 
 export const Preview = ({ id = "puck-preview" }: { id?: string }) => {
   const dispatch = useAppStore((s) => s.dispatch);
-  const root = useAppStore((s) => s.state.data.root);
+  const docRootProps = useRootProps();
   const config = useAppStore((s) => s.config);
   const setStatus = useAppStore((s) => s.setStatus);
   const iframe = useAppStore((s) => s.iframe);
@@ -107,8 +108,8 @@ export const Preview = ({ id = "puck-preview" }: { id?: string }) => {
 
   const Frame = useMemo(() => overrides.iframe, [overrides]);
 
-  // DEPRECATED
-  const rootProps = root.props || root;
+  // Root props from Y.Doc (strip internal __readOnly key)
+  const { __readOnly: _, ...rootProps } = docRootProps;
 
   const ref = useRef<HTMLIFrameElement>(null);
 

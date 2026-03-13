@@ -15,7 +15,7 @@ import styles from "./styles.module.css";
 import "./styles.css";
 import getClassNameFactory from "../../lib/get-class-name-factory";
 import { Copy, CornerLeftUp, Trash } from "lucide-react";
-import { useAppStore, useAppStoreApi } from "../../store";
+import { useAppStore, useAppStoreApi, commitDocToStore } from "../../store";
 import { Loader } from "../Loader";
 import { ActionBar } from "../ActionBar";
 
@@ -113,6 +113,7 @@ export const DraggableComponent = ({
   userDragAxis?: DragAxis;
   inDroppableZone: boolean;
 }) => {
+  const appStore = useAppStoreApi();
   const zoom = useAppStore((s) =>
     s.selectedItem?.props.id === id ? s.zoomConfig.zoom : 1
   );
@@ -158,10 +159,13 @@ export const DraggableComponent = ({
   const containsActiveZone =
     Object.values(localZones).filter(Boolean).length > 0;
 
-  const path = useAppStore(useShallow((s) => s.state.indexes.nodes[id]?.path));
+  const path = useMemo(
+    () => appStore.getState().pageDocument.getPath(id),
+    [appStore, id]
+  );
   const permissions = useAppStore(
     useShallow((s) => {
-      const item = getItem({ index, zone: zoneCompound }, s.state);
+      const item = getItem({ id }, s.state);
 
       return s.permissions.getPermissions({ item });
     })
@@ -378,39 +382,48 @@ export const DraggableComponent = ({
     [id, isSelected]
   );
 
-  const appStore = useAppStoreApi();
-
   const onSelectParent = useCallback(() => {
-    const { nodes } = appStore.getState().state.indexes;
-    const node = nodes[id];
+    const parent = appStore.getState().pageDocument.findParent(id);
 
-    if (!node?.parentId) {
+    if (!parent) {
       return;
     }
 
     dispatch({
       type: "setUi",
       ui: {
-        itemSelector: { id: node.parentId },
+        itemSelector: { id: parent.parentId },
       },
     });
   }, [ctx, path]);
 
   const onDuplicate = useCallback(() => {
-    dispatch({
-      type: "duplicate",
-      sourceIndex: index,
-      sourceZone: zoneCompound,
+    const doc = appStore.getState().pageDocument;
+    const duplicatedId = doc.duplicateBlock(id);
+
+    commitDocToStore(appStore, {
+      onAction: {
+        type: "duplicate",
+        sourceIndex: index,
+        sourceZone: zoneCompound,
+      },
+      ui: duplicatedId ? { itemSelector: { id: duplicatedId } } : undefined,
     });
-  }, [index, zoneCompound]);
+  }, [id, index, zoneCompound]);
 
   const onDelete = useCallback(() => {
-    dispatch({
-      type: "remove",
-      index: index,
-      zone: zoneCompound,
+    const doc = appStore.getState().pageDocument;
+    doc.removeBlock(id);
+
+    commitDocToStore(appStore, {
+      onAction: {
+        type: "remove",
+        index,
+        zone: zoneCompound,
+      },
+      ui: { itemSelector: null },
     });
-  }, [index, zoneCompound]);
+  }, [id, index, zoneCompound]);
 
   const [hover, setHover] = useState(false);
 

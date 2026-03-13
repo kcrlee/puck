@@ -1,9 +1,8 @@
-import { InsertAction } from "../reducer";
-import { insertAction } from "../reducer/actions/insert";
 import { useAppStoreApi, commitDocToStore } from "../store";
+import { syncDocFromState } from "../crdt/sync";
+import { addBlockToDoc, parseZoneCompound } from "../crdt/dispatch";
+import { populateIds } from "./data/populate-ids";
 import { generateId } from "./generate-id";
-import { getItem } from "./data/get-item";
-
 // Makes testing easier without mocks
 export const insertComponent = async (
   componentType: string,
@@ -12,39 +11,45 @@ export const insertComponent = async (
   appStore: ReturnType<typeof useAppStoreApi>
 ) => {
   const { getState } = appStore;
-
-  // Reuse newData so ID retains parity between dispatch and resolver
   const id = generateId(componentType);
 
-  const insertActionData: InsertAction = {
-    type: "insert",
-    componentType,
-    destinationIndex: index,
-    destinationZone: zone,
-    id,
-  };
+  const doc = getState().pageDocument;
+  const config = getState().config;
 
-  const stateBefore = getState().state;
-  const insertedState = insertAction(stateBefore, insertActionData, getState());
+  // Pre-sync doc to handle any external state changes
+  syncDocFromState(doc, getState().state.data, config);
 
-  // Dispatch the insert, immediately
-  const dispatch = getState().dispatch;
-  dispatch({
-    ...insertActionData, // Dispatch insert rather set, as user's may rely on this via onAction
+  // Build component data with populated IDs for nested default props
+  const emptyComponentData = populateIds(
+    {
+      type: componentType,
+      props: {
+        ...(config.components[componentType].defaultProps || {}),
+        id,
+      },
+    },
+    config
+  );
 
-    // We must always record history here so the insert is added to user history
-    // If the user has defined a resolveData method, they will end up with 2 history
-    // entries on insert - one for the initial insert, and one when the data resolves
-    recordHistory: true,
+  // Add block (and any default slot children) directly to Y.Doc
+  const target = parseZoneCompound(zone);
+  addBlockToDoc(doc, emptyComponentData, target, index, config);
+
+  // Materialize and select the new item
+  commitDocToStore(appStore, {
+    onAction: {
+      type: "insert",
+      componentType,
+      destinationIndex: index,
+      destinationZone: zone,
+      id,
+    },
+    ui: { itemSelector: { id } },
   });
 
-  const itemSelector = { id };
-
-  // Select the item, immediately
-  dispatch({ type: "setUi", ui: { itemSelector } });
-
-  const itemData = getItem(itemSelector, insertedState);
-  if (!itemData) return;
+  const block = doc.getBlock(id);
+  if (!block) return;
+  const itemData = { type: block.type, props: { ...block.props, id: block.id } };
 
   // Run any resolvers
   const resolveComponentData = getState().resolveComponentData;
@@ -53,7 +58,7 @@ export const insertComponent = async (
 
   // Extract non-slot props for doc update
   const { id: _resolvedId, ...propsToUpdate } = resolved.node.props;
-  const componentConfig = getState().config.components[resolved.node.type];
+  const componentConfig = config.components[resolved.node.type];
   const fields = componentConfig?.fields ?? {};
   const nonSlotProps: Record<string, any> = {};
   for (const [k, v] of Object.entries(propsToUpdate)) {

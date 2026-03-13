@@ -6,8 +6,6 @@ import { rootDroppableId } from "../root-droppable-id";
 
 import { createAppStore } from "../../store";
 
-const appStore = createAppStore();
-
 const config: Config = {
   components: {
     MyComponent: {
@@ -49,17 +47,19 @@ type ComponentOrRootData = ComponentData | RootDataWithProps;
 
 describe("use-insert-component", () => {
   describe("insert-component", () => {
-    let dispatchedEvents: PuckAction[] = [];
+    let onActionEvents: PuckAction[] = [];
     let resolvedDataEvents: ComponentOrRootData[] = [];
     let resolvedTrigger: string = "";
+
+    const appStore = createAppStore({ config });
 
     beforeEach(() => {
       appStore.setState(
         {
           ...appStore.getInitialState(),
           config,
-          dispatch: (action) => {
-            dispatchedEvents.push(action);
+          onAction: (action) => {
+            onActionEvents.push(action);
           },
           resolveComponentData: async (data, trigger) => {
             resolvedDataEvents.push(data);
@@ -75,33 +75,30 @@ describe("use-insert-component", () => {
 
     afterEach(() => {
       cleanup();
-      dispatchedEvents = [];
+      onActionEvents = [];
       resolvedDataEvents = [];
     });
 
-    it("should dispatch the insert action", async () => {
+    it("should fire onAction with the insert action", async () => {
       insertComponent("MyComponent", rootDroppableId, 0, appStore);
 
-      expect(dispatchedEvents[0]).toEqual<PuckAction>({
-        type: "insert",
-        componentType: "MyComponent",
-        destinationZone: rootDroppableId,
-        destinationIndex: 0,
-        id: expect.stringContaining("MyComponent-"),
-        recordHistory: true,
-      });
+      expect(onActionEvents[0]).toEqual(
+        expect.objectContaining({
+          type: "insert",
+          componentType: "MyComponent",
+          destinationZone: rootDroppableId,
+          destinationIndex: 0,
+          id: expect.stringContaining("MyComponent-"),
+        })
+      );
     });
 
-    it("should dispatch the setUi action, and select the item", async () => {
+    it("should select the inserted item", async () => {
       insertComponent("MyComponent", rootDroppableId, 0, appStore);
 
-      expect(dispatchedEvents[1]).toEqual<PuckAction>({
-        type: "setUi",
-        ui: {
-          itemSelector: {
-            id: expect.stringContaining("MyComponent-"),
-          },
-        },
+      const selector = appStore.getState().state.ui.itemSelector;
+      expect(selector).toEqual({
+        id: expect.stringContaining("MyComponent-"),
       });
     });
 

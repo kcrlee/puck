@@ -38,14 +38,16 @@ const DefaultFields = ({
 const createOnChange =
   (fieldName: string, appStore: StoreApi<AppStore>) =>
   async (value: any, updatedUi?: Partial<UiState>) => {
-    const { dispatch, state, selectedItem, resolveComponentData, pageDocument } =
+    const { selectedItem, resolveComponentData, pageDocument } =
       appStore.getState();
 
-    const { data } = state;
-
-    // DEPRECATED: root without props object
-    const rootProps = data.root.props || data.root;
-    const currentProps = selectedItem ? selectedItem.props : rootProps;
+    // Read current props from Y.Doc for root, or from selectedItem
+    const currentProps = selectedItem
+      ? selectedItem.props
+      : (() => {
+          const { __readOnly, ...rootProps } = pageDocument.getRootPropsJSON();
+          return rootProps;
+        })();
 
     const newProps = { ...currentProps, [fieldName]: value };
 
@@ -81,38 +83,29 @@ const createOnChange =
       return;
     }
 
-    if (data.root.props) {
-      const resolved = await resolveComponentData(
-        { ...data.root, props: newProps },
-        "replace"
-      );
+    // Root field change — always uses props-wrapped format with Y.Doc
+    const resolved = await resolveComponentData(
+      { props: newProps },
+      "replace"
+    );
 
-      // Extract non-slot root props
-      const { id: _id, ...propsToUpdate } = resolved.node.props ?? {};
-      const rootFields = appStore.getState().config.root?.fields ?? {};
-      const nonSlotProps: Record<string, any> = {};
-      for (const [k, v] of Object.entries(propsToUpdate)) {
-        if (!(rootFields[k] && rootFields[k].type === "slot")) {
-          nonSlotProps[k] = v;
-        }
+    // Extract non-slot root props
+    const { id: _id, ...propsToUpdate } = resolved.node.props ?? {};
+    const rootFields = appStore.getState().config.root?.fields ?? {};
+    const nonSlotProps: Record<string, any> = {};
+    for (const [k, v] of Object.entries(propsToUpdate)) {
+      if (!(rootFields[k] && rootFields[k].type === "slot")) {
+        nonSlotProps[k] = v;
       }
-
-      pageDocument.updateRootProps(nonSlotProps);
-      commitDocToStore(appStore, {
-        onAction: {
-          type: "replaceRoot",
-          root: resolved.node,
-        },
-        ui: updatedUi,
-      });
-
-      return;
     }
 
-    // DEPRECATED: root without props object
-    dispatch({
-      type: "setData",
-      data: { root: newProps },
+    pageDocument.updateRootProps(nonSlotProps);
+    commitDocToStore(appStore, {
+      onAction: {
+        type: "replaceRoot",
+        root: resolved.node,
+      },
+      ui: updatedUi,
     });
   };
 
@@ -122,7 +115,7 @@ const FieldsChildInner = ({ fieldName }: { fieldName: string }) => {
     (s) =>
       ((s.selectedItem
         ? s.selectedItem.readOnly
-        : s.state.data.root.readOnly) || {})[fieldName]
+        : s.pageDocument.getRootPropsJSON().__readOnly) || {})[fieldName]
   );
 
   const id = useAppStore((s) => {

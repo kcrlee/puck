@@ -17,7 +17,6 @@ import {
   RichtextField,
 } from "../types";
 import { createReducer, PuckAction } from "../reducer";
-import { getItem } from "../lib/data/get-item";
 import { defaultViewports } from "../components/ViewportControls/default-viewports";
 import { Viewports } from "../types";
 import { create, StoreApi, useStore } from "zustand";
@@ -148,7 +147,14 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
       getCurrentData: () => {
         const s = get();
 
-        return s.selectedItem ?? s.state.data.root;
+        if (s.selectedItem) return s.selectedItem;
+
+        // Return root data from Y.Doc
+        const { __readOnly, ...rootProps } = s.pageDocument.getRootPropsJSON();
+        return {
+          props: rootProps,
+          ...(__readOnly ? { readOnly: __readOnly } : {}),
+        };
       },
       getComponentConfig: (type?: string) => {
         const { config, selectedItem } = get();
@@ -161,10 +167,7 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
           : ({ ...config.root, fields: rootFields } as ComponentConfig);
       },
       selectedItem: initialAppStore?.state?.ui.itemSelector
-        ? getItem(
-            initialAppStore?.state?.ui.itemSelector,
-            initialAppStore.state
-          )
+        ? blockToComponentData(pageDocument, initialAppStore.state.ui.itemSelector.id)
         : null,
       dispatch: (action: PuckAction) =>
         set((s) => {
@@ -182,12 +185,6 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
 
           const state = dispatch(s.state, action);
 
-          const selectedItem = state.ui.itemSelector
-            ? getItem(state.ui.itemSelector, state)
-            : null;
-
-          get().onAction?.(action, state, get().state);
-
           // Post-sync for non-migrated actions that modify data through
           // the reducer (replace, replaceRoot, set, setData).
           // Migrated actions already wrote to the doc directly.
@@ -200,6 +197,13 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
           if (needsPostSync && s.pageDocument && state.data) {
             syncDocFromState(s.pageDocument, state.data, s.config);
           }
+
+          // Derive selectedItem from Y.Doc after sync
+          const selectedItem = state.ui.itemSelector
+            ? blockToComponentData(s.pageDocument, state.ui.itemSelector.id)
+            : null;
+
+          get().onAction?.(action, state, get().state);
 
           return { ...s, state, selectedItem };
         }),
@@ -289,19 +293,22 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
           });
 
           const selectedItem = state.ui.itemSelector
-            ? getItem(state.ui.itemSelector, state)
+            ? blockToComponentData(s.pageDocument, state.ui.itemSelector.id)
             : null;
 
           return { ...s, state, selectedItem };
         }),
       resolveComponentData: async (componentData, trigger) => {
-        const { config, metadata, setComponentLoading, permissions, state } =
+        const { config, metadata, setComponentLoading, permissions, pageDocument } =
           get();
         const componentId =
           "id" in componentData.props ? componentData.props.id : "root";
-        const parentId = state.indexes.nodes[componentId]?.parentId;
-        const parentNode = parentId ? state.indexes.nodes[parentId] : null;
-        const parentData = parentNode?.data ?? null;
+
+        // Look up parent data from Y.Doc (with nested slot content for resolveData callback)
+        const parentInfo = pageDocument.findParent(componentId);
+        const parentData = parentInfo
+          ? blockToFullComponentData(pageDocument, parentInfo.parentId, config)
+          : null;
 
         const timeouts: Record<string, () => void> = {};
 
@@ -343,10 +350,11 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
             resolveComponentData(childItem, "load").then((resolved) => {
               const s = get();
 
-              const node = s.state.indexes.nodes[resolved.node.props.id];
+              const blockId = resolved.node.props.id;
+              const blockExists = blockId === "root" || !!pageDocument.getBlock(blockId);
 
               // Ensure node hasn't been deleted whilst resolution happens
-              if (node && resolved.didChange) {
+              if (blockExists && resolved.didChange) {
                 if (resolved.node.props.id === "root") {
                   // Update root props via Y.Doc
                   const { id: _id, ...rootPropsToUpdate } =
@@ -385,7 +393,7 @@ export const createAppStore = (initialAppStore?: Partial<AppStore>) => {
                   s.config
                 );
                 const selectedItem = newState.ui.itemSelector
-                  ? getItem(newState.ui.itemSelector, newState)
+                  ? blockToComponentData(pageDocument, newState.ui.itemSelector.id)
                   : null;
 
                 set({ state: newState, selectedItem });
@@ -412,6 +420,46 @@ export function useAppStoreApi() {
   return useContext(appStoreContext);
 }
 
+/** Build a ComponentData from a Y.Doc block (for selectedItem derivation). */
+function blockToComponentData(doc: PageDocument, id: string): ComponentData | null {
+  const block = doc.getBlock(id);
+  if (!block) return null;
+  return {
+    type: block.type,
+    props: { ...block.props, id: block.id },
+    ...(block.readOnly ? { readOnly: block.readOnly } : {}),
+  } as ComponentData;
+}
+
+/** Build a full ComponentData with nested slot content from Y.Doc (for resolveData parent). */
+function blockToFullComponentData(
+  doc: PageDocument,
+  id: string,
+  config: Config
+): ComponentData | null {
+  const block = doc.getBlock(id);
+  if (!block) return null;
+
+  const componentConfig = config.components[block.type];
+  const fields = componentConfig?.fields ?? {};
+  const props: Record<string, any> = { ...block.props, id: block.id };
+
+  // Materialize slot content inline (recursive)
+  for (const [slotName, childIds] of Object.entries(block.slots)) {
+    if (fields[slotName]?.type === "slot") {
+      props[slotName] = childIds
+        .map((childId) => blockToFullComponentData(doc, childId, config))
+        .filter(Boolean);
+    }
+  }
+
+  return {
+    type: block.type,
+    props,
+    ...(block.readOnly ? { readOnly: block.readOnly } : {}),
+  } as ComponentData;
+}
+
 /**
  * Materialize the Y.Doc into Zustand state after direct PageDocument mutations.
  * Callers that bypass dispatch (e.g. doc.updateProps) use this to sync the store.
@@ -427,8 +475,12 @@ export function commitDocToStore(
   const ui = options?.ui ? { ...s.state.ui, ...options.ui } : s.state.ui;
   const state = materializeAppState(s.pageDocument, ui, s.config);
 
-  const selectedItem = state.ui.itemSelector
-    ? getItem(state.ui.itemSelector, state)
+  // Derive selectedItem from Y.Doc directly instead of materialized state
+  const itemSelector = options?.ui?.itemSelector !== undefined
+    ? options.ui.itemSelector
+    : s.state.ui.itemSelector;
+  const selectedItem = itemSelector
+    ? blockToComponentData(s.pageDocument, itemSelector.id)
     : null;
 
   if (options?.onAction && s.onAction) {

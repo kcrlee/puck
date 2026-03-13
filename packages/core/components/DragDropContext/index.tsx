@@ -376,14 +376,12 @@ const DragDropContextClient = ({
                   appStore
                 );
               } else if (initialSelector.current) {
-                dispatch({
-                  type: "move",
-                  sourceIndex: initialSelector.current.index,
-                  sourceZone: initialSelector.current.zone,
-                  destinationIndex: thisPreview.index,
-                  destinationZone: thisPreview.zone,
-                  recordHistory: false,
-                });
+                moveComponent(
+                  thisPreview.props.id,
+                  initialSelector.current,
+                  thisPreview,
+                  appStore
+                );
               }
             }
 
@@ -467,18 +465,19 @@ const DragDropContextClient = ({
             targetIndex = 0;
           }
 
-          const path =
-            appStore.getState().state.indexes.nodes[target.id]?.path || [];
-
           // Abort if dragging over self or descendant
-          if (
-            targetId === sourceId ||
-            path.find((path) => {
-              const [pathId] = (path as string).split(":");
-              return pathId === sourceId;
-            })
-          ) {
+          if (targetId === sourceId) {
             return;
+          }
+
+          // Walk ancestor chain via Y.Doc parent index to detect cycles
+          const doc = appStore.getState().pageDocument;
+          let ancestor = doc.findParent(targetId);
+          while (ancestor) {
+            if (ancestor.parentId === sourceId) {
+              return;
+            }
+            ancestor = doc.findParent(ancestor.parentId);
           }
 
           if (dragMode.current === "new") {

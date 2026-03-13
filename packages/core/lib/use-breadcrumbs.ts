@@ -11,10 +11,16 @@ export type Breadcrumb = {
 export const useBreadcrumbs = (renderCount?: number) => {
   const selectedId = useAppStore((s) => s.selectedItem?.props.id);
   const config = useAppStore((s) => s.config);
-  const path = useAppStore((s) => s.state.indexes.nodes[selectedId]?.path);
   const appStore = useAppStoreApi();
 
+  // Derive path from Y.Doc parent index
+  const path = useMemo(
+    () => (selectedId ? appStore.getState().pageDocument.getPath(selectedId) : undefined),
+    [appStore, selectedId]
+  );
+
   return useMemo<Breadcrumb[]>(() => {
+    const doc = appStore.getState().pageDocument;
     const breadcrumbs =
       path?.map((zoneCompound) => {
         const [componentId] = zoneCompound.split(":");
@@ -26,15 +32,15 @@ export const useBreadcrumbs = (renderCount?: number) => {
           };
         }
 
-        const node = appStore.getState().state.indexes.nodes[componentId];
+        const blockType = doc.getBlockType(componentId);
 
-        const label = node
-          ? config.components[node.data.type]?.label ?? node.data.type
+        const label = blockType
+          ? config.components[blockType]?.label ?? blockType
           : "Component";
 
         return {
           label,
-          selector: node ? { id: componentId } : null,
+          selector: blockType ? { id: componentId } : null,
         };
       }) || [];
 

@@ -4,8 +4,12 @@ import { useContextStore } from "../../../lib/use-context-store";
 import { AppStoreApi, useAppStoreApi } from "../../../store";
 import { useOnDragFinished } from "../../../lib/dnd/use-on-drag-finished";
 
-const getNumItems = (appStore: AppStoreApi, zoneCompound: string) =>
-  appStore.getState().state.indexes.zones[zoneCompound].contentIds.length;
+const getNumItems = (appStore: AppStoreApi, zoneCompound: string) => {
+  const [parentId, slotName] = zoneCompound.split(":");
+  return appStore
+    .getState()
+    .pageDocument.getSlotChildren(parentId, slotName || "default-zone").length;
+};
 
 export const useMinEmptyHeight = ({
   zoneCompound,
@@ -42,14 +46,18 @@ export const useMinEmptyHeight = ({
           return;
         }
 
-        const selectedItem = appStore.getState().selectedItem;
-        const zones = appStore.getState().state.indexes.zones;
-        const nodes = appStore.getState().nodes;
+        const s = appStore.getState();
+        const selectedItem = s.selectedItem;
+        const nodes = s.nodes;
+        const [pId, sName] = zoneCompound.split(":");
 
         nodes.nodes[selectedItem?.props.id]?.methods.hideOverlay();
 
         setTimeout(() => {
-          const contentIds = zones[zoneCompound]?.contentIds || [];
+          const contentIds = s.pageDocument.getSlotChildren(
+            pId,
+            sName || "default-zone"
+          );
 
           contentIds.forEach((contentId) => {
             const node = nodes.nodes[contentId];

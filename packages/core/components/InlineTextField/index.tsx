@@ -28,12 +28,15 @@ const InlineTextFieldInternal = ({
 
   useEffect(() => {
     const appStore = appStoreApi.getState();
-    const data = appStore.state.indexes.nodes[componentId].data;
-    const componentConfig = appStore.getComponentConfig(data.type);
+    const doc = appStore.pageDocument;
+    const blockType = doc.getBlockType(componentId);
+    const componentConfig = blockType
+      ? appStore.getComponentConfig(blockType)
+      : null;
 
     if (!componentConfig) {
       throw new Error(
-        `InlineTextField Error: No config defined for ${data.type}`
+        `InlineTextField Error: No config defined for ${blockType}`
       );
     }
 
@@ -46,7 +49,9 @@ const InlineTextFieldInternal = ({
 
       const handleInput = async (e: any) => {
         const appStore = appStoreApi.getState();
-        const node = appStore.state.indexes.nodes[componentId];
+        const doc = appStore.pageDocument;
+        const block = doc.getBlock(componentId);
+        if (!block) return;
 
         let value = e.target.innerText;
 
@@ -54,17 +59,18 @@ const InlineTextFieldInternal = ({
           value = value.replaceAll(/\n/gm, "");
         }
 
-        const newProps = setDeep(node.data.props, propPath, value);
+        const currentProps = { ...block.props, id: block.id };
+        const newProps = setDeep(currentProps, propPath, value);
 
         const resolvedData = await appStore.resolveComponentData(
-          { ...node.data, props: newProps },
+          { type: block.type, props: newProps },
           "replace"
         );
 
         // Extract non-slot props for doc update
         const { id: _id, ...propsToUpdate } = resolvedData.node.props;
         const componentConfig =
-          appStore.config.components[node.data.type];
+          appStore.config.components[block.type];
         const fields = componentConfig?.fields ?? {};
         const nonSlotProps: Record<string, any> = {};
         for (const [k, v] of Object.entries(propsToUpdate)) {

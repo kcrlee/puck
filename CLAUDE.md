@@ -46,15 +46,20 @@ Monorepo managed by Turborepo with Yarn 1.x.
 
 ### CRDT Layer (`packages/core/crdt/`)
 - Active migration: 5 reducer actions (insert, remove, move, duplicate, reorder) are PageDocument-first. All `replace`/`replaceRoot` callers are migrated to `doc.updateProps` + `commitDocToStore` — they no longer go through dispatch
+- Components (DraggableComponent, DragDropContext, Fields, InlineTextField) bypass dispatch entirely for data mutations — use `doc.method()` + `commitDocToStore(appStore, { onAction, ui })` pattern
+- `addBlockToDoc(doc, componentData, target, index, config)` in `crdt/dispatch.ts` — shared helper for recursively adding blocks with slot children to Y.Doc (used by `insertAction` reducer and `insertComponent`)
 - History (undo/redo) uses Y.UndoManager, not snapshot arrays
 - Migration plan & task tracker: `TODO.md` (phases), `plans/puck-fork-architecture.md` (design rationale)
 - Dispatch pre-syncs Y.Doc for all actions (handles external `setState` calls). Post-sync only runs for `set`/`setData`/`replace`/`replaceRoot`
+- When bypassing dispatch, callers must call `syncDocFromState(doc, data, config)` before doc mutations to handle external `setState` calls. `commitDocToStore` handles the post-mutation materialization.
 - `PageDocument.ts` — Y.Doc wrapper: addBlock, removeBlock, moveBlock, duplicateBlock, updateProp, updateProps, updateRootProps, undo/redo
 - `context.tsx` — `PageDocumentProvider` / `usePageDocument` — React context for Y.Doc access (wired into Puck component tree)
-- `hooks.ts` — `useBlock`, `useRootBlockIds`, `useRootProps`, `useSlotChildren` — reactive Y.Doc hooks (NOTE: fire on ALL doc changes, not per-block — not yet suitable for surgical re-renders)
+- `hooks.ts` — `useBlock`, `useRootBlockIds`, `useRootProps`, `useSlotChildren` — per-block granular Y.Doc hooks via `subscribeBlock`/`subscribeSlot`/`subscribeRootBlocks`/`subscribeRootProps`
 - `compat.ts` — `materializeAppState(doc, ui, config)`: Y.Doc → Puck state bridge (toPuckData + walkAppState)
 - `sync.ts` — `syncDocFromState(doc, data, config)`: Puck state → Y.Doc (clear-and-rebuild)
-- `dispatch.ts` — Helpers: `parseZoneCompound`, `getBlockIdAtIndex`, `buildSlotDefs`
+- `dispatch.ts` — Helpers: `parseZoneCompound`, `getBlockIdAtIndex`, `buildSlotDefs`, `addBlockToDoc`
+- `blockToComponentData(doc, id)` / `blockToFullComponentData(doc, id, config)` in `store/index.ts` — build ComponentData from Y.Doc block (used for `selectedItem`, `resolveComponentData` parent)
+- `get-selector-for-id.ts` — `getSelectorForId(doc, id)` and `getPositionForId(doc, id)` now take `PageDocument` instead of `PrivateAppState`
 
 ### Key Types
 - `PrivateAppState` = `{ data, ui, indexes: { nodes: NodeIndex, zones: ZoneIndex } }`
@@ -70,6 +75,8 @@ Monorepo managed by Turborepo with Yarn 1.x.
 
 ## Gotchas
 
+- Phase 4.2 (DropZone) and 4.6 (Slot Transforms) are unblocked — Phase 5.0 granular hooks are implemented
+- `insertComponent` and `moveComponent` (in `lib/`) bypass dispatch — they write to Y.Doc directly and call `commitDocToStore`. Tests for migrated helpers should assert on `onAction` callback, not `dispatch` spy.
 - Action migration pattern: sync doc → PageDocument method → `materializeAppState`. See CRDT Layer section above for which actions are migrated.
 - `initialHistory` prop and legacy history API (`setHistories`, `setHistoryIndex`, `record`) have been removed — Y.UndoManager is the only history mechanism
 - `walkAppState` rebuilds `NodeIndex` and `ZoneIndex` from data — expensive, used after state changes
@@ -79,3 +86,6 @@ Monorepo managed by Turborepo with Yarn 1.x.
 - `resolveAndReplaceData`, `resolveDataById`, `resolveDataBySelector` accept `AppStoreApi` (not `getState`) as second argument
 - Tests that call `appStore.setState(...)` directly don't sync the Y.Doc — dispatch pre-sync handles this, but direct `pageDocument` reads may see stale data
 - `syncDocFromState` does full clear-and-rebuild — used as pre-sync before all dispatches and post-sync for `set`/`setData`/`replace`/`replaceRoot` only. Also used in `resolveAndCommitData` (one-time load)
+- `syncDocFromState` clear-and-rebuild fires ALL Y.Doc observers, even for unchanged blocks. Imperative subscriptions (not hooks) need deduplication: use `queueMicrotask` to defer callback + JSON snapshot comparison to skip no-op changes. See `store/slices/fields.ts` for the pattern.
+- `selectedItem` is derived from Y.Doc via `blockToComponentData()` — it no longer contains slot children inline (only the block's own props). Components needing nested slot data should use `blockToFullComponentData()`.
+- `doc.findParent(id)` returns `null` for root-level blocks (parentId is null). Use `doc.getLocation(id)` to get the raw parent index entry including `parentId: null` for root-level blocks, then provide synthetic root parent `{ type: "root", props: { ...rootProps, id: "root" } }`.

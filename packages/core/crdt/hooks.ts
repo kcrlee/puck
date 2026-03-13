@@ -133,10 +133,11 @@ export function useYArray<T = any>(yarray: Y.Array<T> | undefined): T[] {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-// ── PageDocument-level hooks ─────────────────────────────────────────
+// ── PageDocument-level hooks (granular) ──────────────────────────────
 
 /**
  * Returns a reactive block snapshot for a single block ID.
+ * Only re-renders when THIS block's props or slots change.
  */
 export function useBlock(blockId: string): SerializedBlock | null {
   const doc = usePageDocument();
@@ -149,12 +150,12 @@ export function useBlock(blockId: string): SerializedBlock | null {
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
-      return doc.subscribe(() => {
+      return doc.subscribeBlock(blockId, () => {
         versionRef.current++;
         onStoreChange();
       });
     },
-    [doc]
+    [doc, blockId]
   );
 
   const getSnapshot = useCallback(() => {
@@ -172,6 +173,7 @@ export function useBlock(blockId: string): SerializedBlock | null {
 
 /**
  * Returns the reactive ordered list of root block IDs.
+ * Only re-renders when root block ordering changes.
  */
 export function useRootBlockIds(): string[] {
   const doc = usePageDocument();
@@ -184,7 +186,7 @@ export function useRootBlockIds(): string[] {
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
-      return doc.subscribe(() => {
+      return doc.subscribeRootBlocks(() => {
         versionRef.current++;
         onStoreChange();
       });
@@ -207,6 +209,7 @@ export function useRootBlockIds(): string[] {
 
 /**
  * Returns reactive root/page-level props.
+ * Only re-renders when root props change.
  */
 export function useRootProps(): Record<string, any> {
   const doc = usePageDocument();
@@ -219,7 +222,7 @@ export function useRootProps(): Record<string, any> {
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
-      return doc.subscribe(() => {
+      return doc.subscribeRootProps(() => {
         versionRef.current++;
         onStoreChange();
       });
@@ -242,6 +245,7 @@ export function useRootProps(): Record<string, any> {
 
 /**
  * Returns reactive child IDs for a specific block's slot.
+ * Only re-renders when THIS slot's children change.
  */
 export function useSlotChildren(
   blockId: string,
@@ -257,12 +261,12 @@ export function useSlotChildren(
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
-      return doc.subscribe(() => {
+      return doc.subscribeSlot(blockId, slotName, () => {
         versionRef.current++;
         onStoreChange();
       });
     },
-    [doc]
+    [doc, blockId, slotName]
   );
 
   const getSnapshot = useCallback(() => {

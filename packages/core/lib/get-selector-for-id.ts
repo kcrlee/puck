@@ -1,29 +1,27 @@
 import { ItemSelector } from "./data/get-item";
-import { PrivateAppState } from "../types/Internal";
+import { PageDocument } from "../crdt/PageDocument";
 
 export const getSelectorForId = (
-  state: PrivateAppState,
+  doc: PageDocument,
   id: string
 ): ItemSelector | undefined => {
-  const node = state.indexes.nodes[id];
-
-  if (!node) return;
+  if (!doc.getBlock(id)) return;
 
   return { id };
 };
 
 /** Look up the position (zone compound + index) for a block by ID. Used for dispatching position-based actions. */
 export const getPositionForId = (
-  state: PrivateAppState,
+  doc: PageDocument,
   id: string
 ): { zone: string; index: number } | undefined => {
-  const node = state.indexes.nodes[id];
+  const parentInfo = doc.findParent(id);
+  if (!parentInfo) return;
 
-  if (!node) return;
-
-  const zoneCompound = `${node.parentId}:${node.zone}`;
-
-  const index = state.indexes.zones[zoneCompound].contentIds.indexOf(id);
+  const parentId = parentInfo.parentId ?? "root";
+  const zoneCompound = `${parentId}:${parentInfo.slotName}`;
+  const children = doc.getSlotChildren(parentId, parentInfo.slotName);
+  const index = children.indexOf(id);
 
   return { zone: zoneCompound, index };
 };

@@ -18,7 +18,7 @@ export async function resolveAndReplaceData(
   const id = resolved.props.id;
 
   // Ensure the component still exists
-  if (!getState().state.indexes.nodes[id]) {
+  if (!getState().pageDocument.getBlock(id)) {
     console.warn(
       `Warning: Could not find component with id "${currentData.props.id}" to resolve its data. Component may have been removed or the id is invalid.`
     );

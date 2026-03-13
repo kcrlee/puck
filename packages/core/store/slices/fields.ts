@@ -1,9 +1,8 @@
 import { ComponentData } from "../../types";
 import type { Fields } from "../../types";
 import { AppStore, useAppStoreApi } from "../";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { getChanged } from "../../lib/get-changed";
-import { makeStatePublic } from "../../lib/data/make-state-public";
 
 type ComponentOrRootData = Omit<ComponentData<any>, "type">;
 
@@ -34,22 +33,42 @@ export const useRegisterFieldsSlice = (
     async (reset?: boolean) => {
       const { fields, lastResolvedData } = appStore.getState().fields;
       const metadata = appStore.getState().metadata;
-      const nodes = appStore.getState().state.indexes.nodes;
-      const node = nodes[id || "root"];
-      const componentData = node?.data;
-      // Use Y.Doc parent index when available, fall back to Zustand nodes
-      const parentInfo = id
-        ? appStore.getState().pageDocument.findParent(id)
-        : null;
-      const parentId = parentInfo
-        ? parentInfo.parentId
-        : (node?.parentId ?? null);
-      const parentNode = parentId ? nodes[parentId] : null;
-      const parent = parentNode?.data || null;
+      const doc = appStore.getState().pageDocument;
+      const config = appStore.getState().config;
+
+      // Read component data from Y.Doc
+      let componentData: ComponentOrRootData | null = null;
+      let parent: ComponentData | null = null;
+
+      if (id && id !== "root") {
+        const block = doc.getBlock(id);
+        if (block) {
+          componentData = { type: block.type, props: { ...block.props, id: block.id } } as any;
+        }
+
+        // Parent data from Y.Doc (getLocation includes root-level blocks where parentId is null)
+        const location = doc.getLocation(id);
+        if (location) {
+          if (location.parentId === null) {
+            // Root-level block — parent is the root
+            const { __readOnly, ...rootProps } = doc.getRootPropsJSON();
+            parent = { type: "root", props: { ...rootProps, id: "root" } } as ComponentData;
+          } else {
+            const parentBlock = doc.getBlock(location.parentId);
+            if (parentBlock) {
+              parent = { type: parentBlock.type, props: { ...parentBlock.props, id: parentBlock.id } } as ComponentData;
+            }
+          }
+        }
+      } else {
+        // Root
+        const { __readOnly, ...rootProps } = doc.getRootPropsJSON();
+        componentData = { type: "root", props: { ...rootProps, id: "root" } } as any;
+      }
 
       const { getComponentConfig, state } = appStore.getState();
 
-      const componentConfig = getComponentConfig(componentData?.type);
+      const componentConfig = getComponentConfig((componentData as any)?.type);
 
       if (!componentData || !componentConfig) return;
 
@@ -83,7 +102,7 @@ export const useRegisterFieldsSlice = (
           lastFields,
           metadata: { ...metadata, ...componentConfig.metadata },
           lastData: lastData as ComponentOrRootData,
-          appState: makeStatePublic(state),
+          appState: { data: state.data, ui: state.ui },
           parent,
         });
 
@@ -111,12 +130,45 @@ export const useRegisterFieldsSlice = (
     [id]
   );
 
+  // Track last-seen block snapshot for deduplication
+  const lastSnapshotRef = useRef<string | null>(null);
+
   useEffect(() => {
     resolveFields(true);
 
-    return appStore.subscribe(
-      (s) => s.state.indexes.nodes[id || "root"],
-      () => resolveFields()
-    );
+    // Capture initial snapshot
+    const doc = appStore.getState().pageDocument;
+    if (id && id !== "root") {
+      const block = doc.getBlock(id);
+      lastSnapshotRef.current = block ? JSON.stringify(block.props) : null;
+    } else {
+      lastSnapshotRef.current = JSON.stringify(doc.getRootPropsJSON());
+    }
+
+    // Subscribe to Y.Doc changes with change detection (syncDocFromState
+    // clears-and-rebuilds, firing all observers even for unchanged blocks).
+    // Deferred via queueMicrotask so Zustand state is updated before we read it.
+    const handleChange = () => {
+      queueMicrotask(() => {
+        let snapshot: string | null;
+        if (id && id !== "root") {
+          const block = doc.getBlock(id);
+          snapshot = block ? JSON.stringify(block.props) : null;
+        } else {
+          snapshot = JSON.stringify(doc.getRootPropsJSON());
+        }
+
+        if (snapshot !== lastSnapshotRef.current) {
+          lastSnapshotRef.current = snapshot;
+          resolveFields();
+        }
+      });
+    };
+
+    const unsub = (id && id !== "root")
+      ? doc.subscribeBlock(id, handleChange)
+      : doc.subscribeRootProps(handleChange);
+
+    return unsub;
   }, [id]);
 };

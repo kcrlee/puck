@@ -13,6 +13,7 @@ import { MenuBar } from "../../../MenuBar";
 import { Button } from "../../../Button";
 import { Config, Overrides, UserGenerics } from "../../../../types";
 import { DefaultOverride } from "../../../DefaultOverride";
+import { useRootProps } from "../../../../crdt/hooks";
 import { usePropsContext } from "../..";
 import { getClassNameFactory } from "../../../../lib";
 import styles from "./styles.module.css";
@@ -95,11 +96,8 @@ const HeaderInner = <
 
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const rootTitle = useAppStore((s) => {
-    const rootData = s.state.indexes.nodes["root"]?.data as G["UserRootProps"];
-
-    return rootData.props.title ?? "";
-  });
+  const rootProps = useRootProps();
+  const rootTitle = (rootProps.title as string) ?? "";
 
   const leftSideBarVisible = useAppStore((s) => s.state.ui.leftSideBarVisible);
   const rightSideBarVisible = useAppStore(

@@ -5,6 +5,7 @@ import { Config, ComponentData } from "../../../types";
 import { PrivateAppState } from "../../../types/Internal";
 import { walkAppState } from "../../../lib/data/walk-app-state";
 import { makeStatePublic } from "../../../lib/data/make-state-public";
+import { syncDocFromState } from "../../../crdt/sync";
 
 const baseState: PrivateAppState = {
   ...defaultAppState,
@@ -24,33 +25,42 @@ const appStore = createAppStore();
 
 function resetStores() {
   // Reset main app store:
+  const state = walkAppState(baseState, appStore.getInitialState().config);
   appStore.setState(
     {
       ...appStore.getInitialState(),
-      state: walkAppState(baseState, appStore.getInitialState().config),
+      state,
     },
     true
   );
+
+  // Sync Y.Doc so pageDocument reads see the data
+  const s = appStore.getState();
+  syncDocFromState(s.pageDocument, s.state.data, s.config);
 }
 
 const selectFirst = (config: Config) => {
+  const state = walkAppState(
+    {
+      ...appStore.getState().state,
+      ui: {
+        ...appStore.getState().state.ui,
+        itemSelector: {
+          id: "heading-1",
+        },
+      },
+    },
+    config
+  );
   appStore.setState({
     ...appStore.getState(),
     config,
-    selectedItem: appStore.getState().state.data.content[0],
-    state: walkAppState(
-      {
-        ...appStore.getState().state,
-        ui: {
-          ...appStore.getState().state.ui,
-          itemSelector: {
-            id: "heading-1",
-          },
-        },
-      },
-      config
-    ),
+    selectedItem: state.data.content[0],
+    state,
   });
+
+  // Sync Y.Doc for pageDocument reads
+  syncDocFromState(appStore.getState().pageDocument, state.data, config);
 };
 
 describe("fields slice", () => {
@@ -218,7 +228,11 @@ describe("fields slice", () => {
       destinationZone: "root:default-zone",
     });
 
-    expect(mockResolveFields).toHaveBeenCalledTimes(1);
+    // Y.Doc subscription is deferred via microtask, so wait for it
+    await waitFor(() => {
+      expect(mockResolveFields).toHaveBeenCalledTimes(1);
+    });
+
     expect(mockResolveFields).toHaveBeenCalledWith(
       {
         props: { id: "heading-1", title: "Hello, world" },
@@ -285,19 +299,24 @@ describe("fields slice", () => {
         type: "Block",
       };
 
-      appStore.setState({
-        state: walkAppState(
-          {
-            ...appStore.getState().state,
-            data: {
-              ...appStore.getState().state.data,
-              content: [...appStore.getState().state.data.content, newItem],
-            },
+      const newState = walkAppState(
+        {
+          ...appStore.getState().state,
+          data: {
+            ...appStore.getState().state.data,
+            content: [...appStore.getState().state.data.content, newItem],
           },
-          config
-        ),
+        },
+        config
+      );
+
+      appStore.setState({
+        state: newState,
         selectedItem: newItem,
       });
+
+      // Sync Y.Doc so pageDocument reads see the new block
+      syncDocFromState(appStore.getState().pageDocument, newState.data, config);
     });
 
     mockResolveFields.mockReset();

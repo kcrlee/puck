@@ -81,7 +81,7 @@ export const useDeleteHotkeys = () => {
       if (!permissions.getPermissions({ item: selectedItem }).delete)
         return true;
 
-      const position = getPositionForId(state, sel.id);
+      const position = getPositionForId(appStore.getState().pageDocument, sel.id);
       if (!position) return true;
 
       dispatch({

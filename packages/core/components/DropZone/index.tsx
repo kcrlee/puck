@@ -25,7 +25,6 @@ import {
   ComponentData,
   Config,
   DragAxis,
-  Fields,
   Metadata,
   Overrides,
   PuckContext,
@@ -45,8 +44,8 @@ import { useShallow } from "zustand/react/shallow";
 import { renderContext } from "../Render";
 import { useSlots } from "../../lib/use-slots";
 import { ContextSlotRender, SlotRenderPure } from "../SlotRender";
-import { expandNode } from "../../lib/data/flatten-node";
 import { useFieldTransformsTracked } from "../../lib/field-transforms/use-field-transforms-tracked";
+import { useBlock, useSlotChildren } from "../../crdt/hooks";
 import { getInlineTextTransform } from "../../lib/field-transforms/default-transforms/inline-text-transform";
 import { getSlotTransform } from "../../lib/field-transforms/default-transforms/slot-transform";
 import { getRichTextTransform } from "../../lib/field-transforms/default-transforms/rich-text-transform";
@@ -115,30 +114,16 @@ const DropZoneChild = ({
 
   const zoneStore = useContext(ZoneStoreContext);
 
-  const nodeProps = useAppStore(
-    useShallow((s) => {
-      return s.state.indexes.nodes[componentId]?.flatData.props;
-    })
-  );
-
-  const nodeType = useAppStore(
-    (s) => s.state.indexes.nodes[componentId]?.data.type
-  );
-
-  const nodeReadOnly = useAppStore(
-    useShallow((s) => s.state.indexes.nodes[componentId]?.data.readOnly)
-  );
+  const block = useBlock(componentId);
 
   const appStore = useAppStoreApi();
 
   const item = useMemo(() => {
-    if (nodeProps) {
-      const expanded = expandNode({
-        type: nodeType,
-        props: nodeProps,
-      }) as ComponentData;
-
-      return expanded;
+    if (block) {
+      return {
+        type: block.type,
+        props: { ...block.props, id: block.id },
+      } as ComponentData;
     }
 
     const preview = zoneStore.getState().previewIndex[zoneCompound];
@@ -153,7 +138,7 @@ const DropZoneChild = ({
     }
 
     return null;
-  }, [appStore, componentId, zoneCompound, nodeType, nodeProps]);
+  }, [appStore, componentId, zoneCompound, block]);
 
   const componentConfig = useAppStore((s) =>
     item?.type ? s.config.components[item.type] : null
@@ -190,8 +175,11 @@ const DropZoneChild = ({
   );
 
   const defaultedNode = useMemo(
-    () => ({ type: item?.type ?? nodeType, props: defaultsProps }),
-    [item?.type, nodeType, defaultsProps]
+    () => ({
+      type: item?.type ?? block?.type ?? "",
+      props: defaultsProps,
+    }),
+    [item?.type, block?.type, defaultsProps]
   );
 
   const config = useAppStore((s) => s.config);
@@ -218,7 +206,7 @@ const DropZoneChild = ({
     config,
     defaultedNode,
     combinedFieldTransforms,
-    nodeReadOnly,
+    block?.readOnly,
     isLoading
   );
 
@@ -314,8 +302,12 @@ export const DropZoneEdit = forwardRef<HTMLDivElement, DropZoneProps>(
       unregisterLocalZone,
     } = ctx ?? {};
 
-    const path = useAppStore(
-      useShallow((s) => (areaId ? s.state.indexes.nodes[areaId]?.path : null))
+    const path = useMemo(
+      () =>
+        areaId
+          ? appStoreApi.getState().pageDocument.getPath(areaId)
+          : null,
+      [appStoreApi, areaId]
     );
 
     let zoneCompound = rootDroppableId;
@@ -336,11 +328,13 @@ export const DropZoneEdit = forwardRef<HTMLDivElement, DropZoneProps>(
       (s) => s.nextAreaDepthIndex[areaId || ""]
     );
 
-    const zoneContentIds = useAppStore(
-      useShallow((s) => {
-        return s.state.indexes.zones[zoneCompound]?.contentIds;
-      })
+    // Read content IDs directly from Y.Doc for granular reactivity
+    const [zoneParentId, zoneSlotName] = zoneCompound.split(":");
+    const zoneContentIds = useSlotChildren(
+      zoneParentId,
+      zoneSlotName || "default-zone"
     );
+
     const zoneType = useAppStore(
       useShallow((s) => {
         return s.state.indexes.zones[zoneCompound]?.type;
