@@ -6,7 +6,7 @@ describe("Reducer", () => {
   const { reducer } = testSetup();
 
   describe("registerZone action", () => {
-    it("should register a zone that's been previously unregistered", () => {
+    it("should be a no-op (Y.Doc persists zone data regardless of mount state)", () => {
       const state: PrivateAppState = {
         ...defaultState,
         data: {
@@ -15,26 +15,21 @@ describe("Reducer", () => {
         },
       };
 
-      const unregisterAction: UnregisterZoneAction = {
-        type: "unregisterZone",
-        zone: "zone1",
-      };
-
       const registerAction: RegisterZoneAction = {
         type: "registerZone",
         zone: "zone1",
       };
 
-      const newState = reducer(
-        reducer(state, unregisterAction),
-        registerAction
+      const newState = reducer(state, registerAction);
+      // State should be unchanged — zone data persists in Y.Doc
+      expect(newState.data.zones?.zone1).toEqual(
+        state.data.zones?.zone1
       );
-      expect(newState.data.zones?.zone1[0].props.id).toEqual("1");
     });
   });
 
   describe("unregisterZone action", () => {
-    it("should unregister a zone", () => {
+    it("should be a no-op (Y.Doc persists zone data regardless of mount state)", () => {
       const state: PrivateAppState = {
         ...defaultState,
         data: {
@@ -49,7 +44,10 @@ describe("Reducer", () => {
       };
 
       const newState = reducer(state, action);
-      expect(newState.data.zones?.zone1).toBeUndefined();
+      // State should be unchanged — Y.Doc persists zone data
+      expect(newState.data.zones?.zone1).toEqual(
+        state.data.zones?.zone1
+      );
     });
   });
 });

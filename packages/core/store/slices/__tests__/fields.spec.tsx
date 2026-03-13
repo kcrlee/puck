@@ -4,7 +4,6 @@ import { createAppStore, defaultAppState } from "../..";
 import { Config, ComponentData } from "../../../types";
 import { PrivateAppState } from "../../../types/Internal";
 import { walkAppState } from "../../../lib/data/walk-app-state";
-import { makeStatePublic } from "../../../lib/data/make-state-public";
 import { syncDocFromState } from "../../../crdt/sync";
 
 const baseState: PrivateAppState = {
@@ -117,7 +116,7 @@ describe("fields slice", () => {
         type: "root",
       },
       {
-        appState: makeStatePublic(appStore.getState().state),
+        appState: { data: appStore.getState().pageDocument.toPuckDataCached(), ui: appStore.getState().state.ui },
         changed: {
           id: true,
         },
@@ -162,7 +161,7 @@ describe("fields slice", () => {
         type: "Heading",
       },
       {
-        appState: makeStatePublic(appStore.getState().state),
+        appState: { data: appStore.getState().pageDocument.toPuckDataCached(), ui: appStore.getState().state.ui },
         changed: {
           id: true,
           title: true,
@@ -239,7 +238,7 @@ describe("fields slice", () => {
         type: "Heading",
       },
       {
-        appState: makeStatePublic(appStore.getState().state),
+        appState: { data: appStore.getState().pageDocument.toPuckDataCached(), ui: appStore.getState().state.ui },
         changed: {
           id: false,
           title: true,
@@ -330,7 +329,7 @@ describe("fields slice", () => {
         type: "Block",
       },
       {
-        appState: makeStatePublic(appStore.getState().state),
+        appState: { data: appStore.getState().pageDocument.toPuckDataCached(), ui: appStore.getState().state.ui },
         changed: {
           id: true,
           title: true,

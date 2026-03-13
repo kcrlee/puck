@@ -3,10 +3,23 @@ import { useRegisterPermissionsSlice } from "../permissions";
 import { defaultAppState, createAppStore } from "../../";
 import { rootDroppableId } from "../../../lib/root-droppable-id";
 import { walkAppState } from "../../../lib/data/walk-app-state";
-import { makeStatePublic } from "../../../lib/data/make-state-public";
 import { Config } from "../../../types";
+import { syncDocFromState } from "../../../crdt/sync";
 
 const appStore = createAppStore();
+
+/** Sync Y.Doc after setState so Y.Doc-based reads work correctly */
+function syncDoc() {
+  const { pageDocument, state, config } = appStore.getState();
+  pageDocument.config = config;
+  syncDocFromState(pageDocument, state.data, config);
+}
+
+/** Helper: setState + sync Y.Doc in one step */
+function setStateAndSync(partial: Parameters<typeof appStore.setState>[0]) {
+  appStore.setState(partial);
+  syncDoc();
+}
 
 function resetStores() {
   appStore.setState(
@@ -15,6 +28,7 @@ function resetStores() {
     },
     true
   );
+  syncDoc();
 }
 
 describe("permissions slice", () => {
@@ -25,7 +39,7 @@ describe("permissions slice", () => {
   it("resolves on load", async () => {
     const mockResolvePermissions = jest.fn().mockReturnValue({});
 
-    appStore.setState({
+    setStateAndSync({
       config: {
         root: {
           render: () => <div />,
@@ -51,7 +65,7 @@ describe("permissions slice", () => {
   it("auto-resolves when appStore data changes", async () => {
     const mockResolvePermissions = jest.fn().mockReturnValue({});
 
-    appStore.setState({
+    setStateAndSync({
       config: {
         root: {
           render: () => <div />,
@@ -73,18 +87,9 @@ describe("permissions slice", () => {
 
     expect(mockResolvePermissions).toHaveBeenCalledTimes(1);
 
-    appStore.setState({
-      state: {
-        ...defaultAppState,
-        data: {
-          ...appStore.getState().state.data,
-          root: {
-            props: {
-              title: "Goodbye, world",
-            },
-          },
-        },
-      },
+    // Update root props via Y.Doc (permissions subscribes to Y.Doc with microtask dedup)
+    await act(async () => {
+      appStore.getState().pageDocument.updateRootProps({ title: "Goodbye, world" });
     });
 
     expect(mockResolvePermissions).toHaveBeenCalledTimes(2);
@@ -119,7 +124,7 @@ describe("permissions slice", () => {
     loadingCalled = false;
     unloadingCalled = false;
 
-    appStore.setState({
+    setStateAndSync({
       config: {
         components: {
           MyComponent: {
@@ -229,7 +234,7 @@ describe("permissions slice", () => {
         },
       };
 
-      appStore.setState({
+      setStateAndSync({
         ...appStore.getInitialState(),
         config,
         state: walkAppState(
@@ -253,6 +258,7 @@ describe("permissions slice", () => {
         await appStore.getState().permissions.resolvePermissions(); // Double calls shouldn't run resolvers if data hasn't changed
       });
 
+      const doc = appStore.getState().pageDocument;
       expect(resolvePermissions).toHaveBeenCalledTimes(2);
       expect(resolvePermissions).toHaveBeenCalledWith(
         {
@@ -260,7 +266,7 @@ describe("permissions slice", () => {
           type: "MyComponent",
         },
         {
-          appState: makeStatePublic(appStore.getState().state),
+          appState: { data: doc.toPuckDataCached(), ui: appStore.getState().state.ui },
           changed: { id: true },
           lastData: null,
           lastPermissions: null,
@@ -300,7 +306,7 @@ describe("permissions slice", () => {
         },
       };
 
-      appStore.setState({
+      setStateAndSync({
         config,
         state: walkAppState(
           {
@@ -335,6 +341,7 @@ describe("permissions slice", () => {
         });
       });
 
+      const doc = appStore.getState().pageDocument;
       expect(resolvePermissions).toHaveBeenCalledTimes(3);
       expect(resolvePermissions).toHaveBeenCalledWith(
         {
@@ -342,7 +349,7 @@ describe("permissions slice", () => {
           type: "MyComponent",
         },
         {
-          appState: makeStatePublic(appStore.getState().state),
+          appState: { data: doc.toPuckDataCached(), ui: appStore.getState().state.ui },
           changed: { id: false, title: true },
           lastData: {
             props: { id: "comp-1" },
@@ -372,7 +379,7 @@ describe("permissions slice", () => {
 
     it("updates if item changes or if force = true", async () => {
       let resolveCalls = 0;
-      appStore.setState({
+      setStateAndSync({
         config: {
           components: {
             MyComponent: {
@@ -418,16 +425,18 @@ describe("permissions slice", () => {
       });
       expect(resolveCalls).toBe(3);
 
-      // Change item => triggers new resolution
-      appStore.setState({
-        state: {
-          ...defaultAppState,
-          data: {
-            content: [{ type: "MyComponent", props: { id: "changed-1" } }],
-            root: {},
-            zones: {},
+      // Change item via Y.Doc — the subscription auto-triggers resolution (via microtask)
+      await act(async () => {
+        setStateAndSync({
+          state: {
+            ...defaultAppState,
+            data: {
+              content: [{ type: "MyComponent", props: { id: "changed-1" } }],
+              root: {},
+              zones: {},
+            },
           },
-        },
+        });
       });
 
       // Watcher will trigger this
@@ -476,7 +485,7 @@ describe("permissions slice", () => {
         content: [parentComponent],
       };
 
-      appStore.setState({
+      setStateAndSync({
         config,
         state: walkAppState(
           {
@@ -549,7 +558,7 @@ describe("permissions slice", () => {
         content: [parentComponent],
       };
 
-      appStore.setState({
+      setStateAndSync({
         config,
         state: walkAppState(
           {
@@ -647,7 +656,7 @@ describe("permissions slice", () => {
         content: [parentComponent],
       };
 
-      appStore.setState({
+      setStateAndSync({
         config,
         state: walkAppState(
           {
@@ -703,7 +712,7 @@ describe("permissions slice", () => {
   describe("refreshPermissions()", () => {
     it("force updates if item changes", async () => {
       let resolveCalls = 0;
-      appStore.setState({
+      setStateAndSync({
         config: {
           components: {
             MyComponent: {
@@ -747,7 +756,7 @@ describe("permissions slice", () => {
   describe("integration with useAppStore subscriptions", () => {
     it("auto-resolves when appStore config changes", async () => {
       let resolveCalled = false;
-      appStore.setState({
+      setStateAndSync({
         config: {
           components: {
             MyComponent: {

@@ -1,16 +1,8 @@
-import { Content, Data } from "../../types";
+import { Data } from "../../types";
 import { MoveAction } from "../actions";
 import { AppStore } from "../../store";
 import { PrivateAppState } from "../../types/Internal";
 import { getBlockIdAtIndex, parseZoneCompound } from "../../crdt/dispatch";
-import { materializeAppState } from "../../crdt/compat";
-
-// Restore unregistered zones when re-registering in same session
-export const zoneCache: Record<string, Content> = {};
-
-export const addToZoneCache = (key: string, data: Content) => {
-  zoneCache[key] = data;
-};
 
 export const moveAction = <UserData extends Data>(
   state: PrivateAppState<UserData>,
@@ -34,9 +26,14 @@ export const moveAction = <UserData extends Data>(
 
   doc.moveBlock(blockId, target, action.destinationIndex);
 
-  return materializeAppState(
-    doc,
-    state.ui,
-    appStore.config
-  ) as PrivateAppState<UserData>;
+  // Only materialize data when callbacks need it; skip expensive walkAppState
+  if (appStore.onAction) {
+    return {
+      data: doc.toPuckData(),
+      ui: state.ui,
+      indexes: { nodes: {}, zones: {} },
+    } as PrivateAppState<UserData>;
+  }
+
+  return state;
 };

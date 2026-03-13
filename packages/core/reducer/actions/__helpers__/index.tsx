@@ -10,6 +10,7 @@ import { stripSlots } from "../../../lib/data/strip-slots";
 import { Reducer } from "react";
 import { flattenNode } from "../../../lib/data/flatten-node";
 import { syncDocFromState } from "../../../crdt/sync";
+import { walkAppState } from "../../../lib/data/walk-app-state";
 
 jest.mock("../../../lib/generate-id");
 
@@ -145,6 +146,7 @@ export const testSetup = () => {
     const newStore = {
       ...appStore.getInitialState(),
       config,
+      onAction: () => {}, // Ensure migrated actions materialize for test assertions
     };
 
     appStore.setState(newStore, true);
@@ -170,6 +172,18 @@ export const testSetup = () => {
     syncDocFromState(doc, state.data, config);
   };
 
+  // Migrated actions return empty indexes (they use toPuckData, skipping
+  // walkAppState). Rebuild indexes from data for test assertions.
+  const ensureIndexes = (state: PrivateAppState): PrivateAppState => {
+    if (
+      Object.keys(state.indexes.nodes).length === 0 &&
+      Object.keys(state.indexes.zones).length === 0
+    ) {
+      return walkAppState(state, config);
+    }
+    return state;
+  };
+
   const executeSequence = (
     initialState: PrivateAppState<UserData>,
     actions: ((currentState: PrivateAppState<UserData>) => PuckAction)[]
@@ -180,10 +194,10 @@ export const testSetup = () => {
       const action = actionFn(currentState);
 
       syncDoc(currentState);
-      currentState = _reducer(
+      currentState = ensureIndexes(_reducer(
         currentState,
         action
-      ) as PrivateAppState<UserData>;
+      )) as PrivateAppState<UserData>;
     });
 
     return currentState;
@@ -191,7 +205,7 @@ export const testSetup = () => {
 
   const reducer = (state: PrivateAppState, action: PuckAction) => {
     syncDoc(state);
-    return _reducer(state, action);
+    return ensureIndexes(_reducer(state, action));
   };
 
   return { reducer, executeSequence, config };

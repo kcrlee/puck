@@ -16,7 +16,7 @@ import { AutoScroller, defaultPreset, DragDropManager } from "@dnd-kit/dom";
 import { DragDropEvents } from "@dnd-kit/abstract";
 import { DropZoneProvider } from "../DropZone";
 import type { Draggable, Droppable } from "@dnd-kit/dom";
-import { getItem } from "../../lib/data/get-item";
+import { blockToComponentData } from "../../crdt/block-data";
 import {
   DropZoneContext,
   Preview,
@@ -503,9 +503,9 @@ const DragDropContextClient = ({
               };
             }
 
-            const item = getItem(
-              { id: sourceId },
-              appStore.getState().state
+            const item = blockToComponentData(
+              appStore.getState().pageDocument,
+              sourceId
             );
 
             if (item) {
@@ -534,9 +534,9 @@ const DragDropContextClient = ({
           if (source && source.type !== "void") {
             const sourceData = source.data as ComponentDndData;
 
-            const item = getItem(
-              { id: source.id as string },
-              appStore.getState().state
+            const item = blockToComponentData(
+              appStore.getState().pageDocument,
+              source.id as string
             );
 
             if (item) {

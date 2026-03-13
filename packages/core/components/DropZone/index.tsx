@@ -40,7 +40,7 @@ import { assignRefs } from "../../lib/assign-refs";
 import { useContentIdsWithPreview } from "./lib/use-content-with-preview";
 import { useDragAxis } from "./lib/use-drag-axis";
 import { useContextStore } from "../../lib/use-context-store";
-import { useShallow } from "zustand/react/shallow";
+
 import { renderContext } from "../Render";
 import { useSlots } from "../../lib/use-slots";
 import { ContextSlotRender, SlotRenderPure } from "../SlotRender";
@@ -335,11 +335,33 @@ export const DropZoneEdit = forwardRef<HTMLDivElement, DropZoneProps>(
       zoneSlotName || "default-zone"
     );
 
-    const zoneType = useAppStore(
-      useShallow((s) => {
-        return s.state.indexes.zones[zoneCompound]?.type;
-      })
-    );
+    // Derive zone type from config (slot field declarations) instead of
+    // state.indexes.zones. Root content zone is "root", config-declared
+    // slot fields are "slot", legacy DropZones are "dropzone".
+    const zoneType = useMemo(() => {
+      if (zoneCompound === rootDroppableId) return "root";
+
+      const config = appStoreApi.getState().config;
+      const doc = appStoreApi.getState().pageDocument;
+
+      if (zoneParentId === "root") {
+        const rootFields = config.root?.fields ?? {};
+        return rootFields[zoneSlotName]?.type === "slot"
+          ? "slot"
+          : "dropzone";
+      }
+
+      const blockType = doc.getBlockType(zoneParentId);
+      if (!blockType) return undefined; // Block not yet in doc
+
+      const componentConfig = config.components[blockType];
+      const fields = componentConfig?.fields ?? {};
+      return fields[zoneSlotName]?.type === "slot" ? "slot" : "dropzone";
+    }, [zoneCompound, zoneParentId, zoneSlotName, appStoreApi]) as
+      | "root"
+      | "slot"
+      | "dropzone"
+      | undefined;
 
     // Register zone on mount
     useEffect(() => {

@@ -145,37 +145,8 @@ describe("Puck", () => {
 
     expect(appStore.getState().state.indexes).toMatchInlineSnapshot(`
       {
-        "nodes": {
-          "root": {
-            "data": {
-              "props": {
-                "content": [],
-                "id": "root",
-              },
-              "type": "root",
-            },
-            "flatData": {
-              "props": {
-                "content": null,
-                "id": "root",
-              },
-              "type": "root",
-            },
-            "parentId": null,
-            "path": [],
-            "zone": "",
-          },
-        },
-        "zones": {
-          "root:content": {
-            "contentIds": [],
-            "type": "slot",
-          },
-          "root:default-zone": {
-            "contentIds": [],
-            "type": "root",
-          },
-        },
+        "nodes": {},
+        "zones": {},
       }
     `);
   });

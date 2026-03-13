@@ -3,7 +3,6 @@ import { RemoveAction } from "../actions";
 import { AppStore } from "../../store";
 import { PrivateAppState } from "../../types/Internal";
 import { getBlockIdAtIndex } from "../../crdt/dispatch";
-import { materializeAppState } from "../../crdt/compat";
 
 export const removeAction = <UserData extends Data>(
   state: PrivateAppState<UserData>,
@@ -19,10 +18,14 @@ export const removeAction = <UserData extends Data>(
   // Remove block (and all children) via PageDocument
   doc.removeBlock(blockId);
 
-  // Materialize new state from Y.Doc
-  return materializeAppState(
-    doc,
-    state.ui,
-    appStore.config
-  ) as PrivateAppState<UserData>;
+  // Only materialize data when callbacks need it; skip expensive walkAppState
+  if (appStore.onAction) {
+    return {
+      data: doc.toPuckData(),
+      ui: state.ui,
+      indexes: { nodes: {}, zones: {} },
+    } as PrivateAppState<UserData>;
+  }
+
+  return state;
 };

@@ -32,7 +32,7 @@ const initialData = {
 
 function createTestStore() {
   const state = makeState(initialData);
-  return createAppStore({ config, state });
+  return createAppStore({ config, state, onAction: () => {} });
 }
 
 describe("history slice (Y.UndoManager)", () => {

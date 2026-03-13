@@ -1,6 +1,5 @@
 import { useAppStoreApi, commitDocToStore } from "../store";
 import { rootDroppableId } from "./root-droppable-id";
-import { syncDocFromState } from "../crdt/sync";
 import { parseZoneCompound } from "../crdt/dispatch";
 
 /**
@@ -18,12 +17,8 @@ export const moveComponent = async (
   appStore: ReturnType<typeof useAppStoreApi>
 ) => {
   const doc = appStore.getState().pageDocument;
-  const config = appStore.getState().config;
   const sourceZone = source.zone ?? rootDroppableId;
   const destinationZone = destination.zone ?? rootDroppableId;
-
-  // Pre-sync doc to handle any external state changes
-  syncDocFromState(doc, appStore.getState().state.data, config);
 
   // Move block directly in Y.Doc
   const target = parseZoneCompound(destinationZone);
@@ -49,7 +44,7 @@ export const moveComponent = async (
   if (resolvedData.didChange) {
     // Extract non-slot props for doc update
     const { id: _resolvedId, ...propsToUpdate } = resolvedData.node.props;
-    const componentConfig = config.components[resolvedData.node.type];
+    const componentConfig = appStore.getState().config.components[resolvedData.node.type];
     const fields = componentConfig?.fields ?? {};
     const nonSlotProps: Record<string, any> = {};
     for (const [k, v] of Object.entries(propsToUpdate)) {

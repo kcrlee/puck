@@ -28,7 +28,7 @@ import { UniqueIdentifier } from "@dnd-kit/abstract";
 import { getDeepScrollPosition } from "../../lib/get-deep-scroll-position";
 import { DropZoneContext, ZoneStoreContext } from "../DropZone/context";
 import { useShallow } from "zustand/react/shallow";
-import { getItem } from "../../lib/data/get-item";
+import { blockToComponentData } from "../../crdt/block-data";
 import { useSortable } from "@dnd-kit/react/sortable";
 import { accumulateTransform } from "../../lib/accumulate-transform";
 import { useContextStore } from "../../lib/use-context-store";
@@ -165,7 +165,7 @@ export const DraggableComponent = ({
   );
   const permissions = useAppStore(
     useShallow((s) => {
-      const item = getItem({ id }, s.state);
+      const item = blockToComponentData(s.pageDocument, id);
 
       return s.permissions.getPermissions({ item });
     })

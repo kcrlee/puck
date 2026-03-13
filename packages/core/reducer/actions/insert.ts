@@ -5,7 +5,6 @@ import { PrivateAppState } from "../../types/Internal";
 import { AppStore } from "../../store";
 import { populateIds } from "../../lib/data/populate-ids";
 import { addBlockToDoc, parseZoneCompound } from "../../crdt/dispatch";
-import { materializeAppState } from "../../crdt/compat";
 
 export function insertAction<UserData extends Data>(
   state: PrivateAppState<UserData>,
@@ -31,9 +30,14 @@ export function insertAction<UserData extends Data>(
   const target = parseZoneCompound(action.destinationZone);
   addBlockToDoc(doc, emptyComponentData, target, action.destinationIndex, appStore.config);
 
-  return materializeAppState(
-    doc,
-    state.ui,
-    appStore.config
-  ) as PrivateAppState<UserData>;
+  // Only materialize data when callbacks need it; skip expensive walkAppState
+  if (appStore.onAction) {
+    return {
+      data: doc.toPuckData(),
+      ui: state.ui,
+      indexes: { nodes: {}, zones: {} },
+    } as PrivateAppState<UserData>;
+  }
+
+  return state;
 }

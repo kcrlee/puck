@@ -2,29 +2,42 @@ import { Data } from "../../types";
 import { SetAction } from "../actions";
 import { AppStore } from "../../store";
 import { PrivateAppState } from "../../types/Internal";
-import { walkAppState } from "../../lib/data/walk-app-state";
+import { syncDocFromState } from "../../crdt/sync";
 
 export const setAction = <UserData extends Data>(
   state: PrivateAppState<UserData>,
   action: SetAction<UserData>,
   appStore: AppStore
 ): PrivateAppState<UserData> => {
+  const doc = appStore.pageDocument;
+  const config = appStore.config;
+
+  // Use Y.Doc data as merge base (source of truth, not possibly-stale state.data)
+  const currentData = doc.toPuckDataCached();
+  const currentState = { ...state, data: currentData } as PrivateAppState<UserData>;
+
   if (typeof action.state === "object") {
-    const newState = {
-      ...state,
+    const merged = {
+      ...currentState,
       ...action.state,
     };
 
-    if (action.state.indexes) {
-      return newState;
-    }
+    syncDocFromState(doc, merged.data, config);
 
-    console.warn(
-      "`set` is expensive and may cause unnecessary re-renders. Consider using a more atomic action instead."
-    );
-
-    return walkAppState(newState, appStore.config);
+    return {
+      ...merged,
+      data: doc.toPuckData(),
+      indexes: { nodes: {}, zones: {} },
+    } as PrivateAppState<UserData>;
   }
 
-  return { ...state, ...action.state(state) };
+  // Function form: pass Y.Doc-current state to callback
+  const newState = { ...currentState, ...action.state(currentState) };
+  syncDocFromState(doc, newState.data, config);
+
+  return {
+    ...newState,
+    data: doc.toPuckData(),
+    indexes: { nodes: {}, zones: {} },
+  } as PrivateAppState<UserData>;
 };

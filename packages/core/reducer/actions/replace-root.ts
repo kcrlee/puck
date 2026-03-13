@@ -2,30 +2,33 @@ import { Data } from "../../types";
 import { ReplaceRootAction } from "../actions";
 import { AppStore } from "../../store";
 import { PrivateAppState } from "../../types/Internal";
-import { walkAppState } from "../../lib/data/walk-app-state";
 
-// Not yet migrated to PageDocument — root props with slot fields need
-// special handling. syncDocFromState in dispatch keeps the Y.Doc in sync.
+// Backward-compat: production callers migrated to doc.updateRootProps +
+// commitDocToStore. This path kept for external API users and tests.
 export const replaceRootAction = <UserData extends Data>(
   state: PrivateAppState<UserData>,
   action: ReplaceRootAction<UserData>,
   appStore: AppStore
 ): PrivateAppState<UserData> => {
-  return walkAppState<UserData>(
-    state,
-    appStore.config,
-    (content) => content,
-    (childItem) => {
-      if (childItem.props.id === "root") {
-        return {
-          ...childItem,
-          props: { ...childItem.props, ...action.root.props },
-          readOnly: action.root.readOnly,
-        };
-      }
+  const doc = appStore.pageDocument;
+  const config = appStore.config;
 
-      // Everything in inside root, so everything needs re-indexing
-      return childItem;
+  // Extract non-slot props from root replacement
+  const { id: _id, ...propsToUpdate } = action.root.props ?? {};
+  const rootFields = config.root?.fields ?? {};
+  const nonSlotProps: Record<string, any> = {};
+  for (const [k, v] of Object.entries(propsToUpdate)) {
+    if (!(rootFields[k] && rootFields[k].type === "slot")) {
+      nonSlotProps[k] = v;
     }
-  );
+  }
+
+  doc.updateRootProps(nonSlotProps);
+
+  return {
+    ...state,
+    data: doc.toPuckData(),
+    ui: state.ui,
+    indexes: { nodes: {}, zones: {} },
+  } as PrivateAppState<UserData>;
 };

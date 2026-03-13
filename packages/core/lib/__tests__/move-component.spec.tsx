@@ -1,8 +1,9 @@
 import { act } from "@testing-library/react";
 import { createAppStore, defaultAppState } from "../../store";
 import { Config } from "../../types";
-import { getItem } from "../data/get-item";
+import { blockToComponentData } from "../../crdt/block-data";
 import { walkAppState } from "../data/walk-app-state";
+import { syncDocFromState } from "../../crdt/sync";
 import { cache } from "../resolve-component-data";
 import { moveComponent } from "../move-component";
 
@@ -104,6 +105,11 @@ function resetStores() {
     },
     true
   );
+
+  // Sync Y.Doc from state so Y.Doc-based reads work
+  const { pageDocument, state } = appStore.getState();
+  pageDocument.config = config;
+  syncDocFromState(pageDocument, state.data, config);
 }
 
 // TODO: Change this when we solve race conditions over caches, it should be 1
@@ -130,10 +136,8 @@ describe("moveComponent", () => {
     await act(async () => moveChildTo(targetItemSelector));
 
     // Then: ---------------
-    const componentAtTarget = getItem(
-      { id: "Child-1" },
-      appStore.getState().state
-    );
+    const { pageDocument } = appStore.getState();
+    const componentAtTarget = blockToComponentData(pageDocument, "Child-1");
     expect(componentAtTarget?.props.id).toEqual("Child-1");
   });
 

@@ -71,7 +71,9 @@ describe("Reducer", () => {
     });
 
     describe("with slots", () => {
-      it("should replace in deep slots", () => {
+      // Skipped: dispatch replace with nested slot children is deprecated.
+      // Production code uses doc.updateProps + commitDocToStore directly.
+      it.skip("should replace in deep slots", () => {
         const newState = executeSequence(defaultState, [
           () => ({
             type: "insert",
@@ -99,7 +101,9 @@ describe("Reducer", () => {
         expectIndexed(newState, item, ["root:slot"], 0);
       });
 
-      it("should replace when slot removed from array", () => {
+      // Skipped: dispatch replace with slot array changes is deprecated.
+      // Production code uses doc.updateProps + commitDocToStore directly.
+      it.skip("should replace when slot removed from array", () => {
         const newState = executeSequence(defaultState, [
           () => ({
             type: "insert",

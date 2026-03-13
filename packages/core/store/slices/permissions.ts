@@ -1,9 +1,12 @@
 import { useEffect } from "react";
-import { flattenData } from "../../lib/data/flatten-data";
 import { ComponentData, Config, Permissions, UserGenerics } from "../../types";
 import { getChanged } from "../../lib/get-changed";
 import { AppStore, useAppStoreApi } from "../";
-import { makeStatePublic } from "../../lib/data/make-state-public";
+import {
+  blockToComponentData,
+  blockToFullComponentData,
+} from "../../crdt/block-data";
+
 
 type PermissionsArgs<
   UserConfig extends Config = Config,
@@ -51,8 +54,10 @@ export const createPermissionsSlice = (
   get: () => AppStore
 ): PermissionsSlice => {
   const resolvePermissions: ResolvePermissions = async (params = {}, force) => {
-    const { state, permissions, config } = get();
+    const { permissions, config, pageDocument } = get();
     const { cache, globalPermissions } = permissions;
+
+    pageDocument.config = config;
 
     const resolvePermissionsForItem = async (
       item: ComponentData,
@@ -60,14 +65,21 @@ export const createPermissionsSlice = (
     ) => {
       const { config, state: appState, setComponentLoading, pageDocument } = get();
       const itemCache: Cache[string] | undefined = cache[item.props.id];
-      const nodes = appState.indexes.nodes;
-      // Use Y.Doc parent index when available, fall back to Zustand nodes
+      // Parent lookup from Y.Doc
       const parentInfo = pageDocument.findParent(item.props.id);
-      const parentId = parentInfo
-        ? parentInfo.parentId
-        : (nodes[item.props.id]?.parentId ?? null);
-      const parentNode = parentId ? nodes[parentId] : null;
-      const parentData = parentNode?.data ?? null;
+      const parentId = parentInfo?.parentId ?? null;
+      let parentData: ComponentData | null = null;
+      if (parentId) {
+        parentData = blockToFullComponentData(pageDocument, parentId, config);
+      } else if (pageDocument.getLocation(item.props.id)) {
+        // Root-level block — synthetic root parent
+        const rootProps = pageDocument.getRootPropsJSON();
+        const { __readOnly, ...rootPropsClean } = rootProps;
+        parentData = {
+          type: "root",
+          props: { ...rootPropsClean, id: "root" },
+        } as ComponentData;
+      }
 
       const componentConfig =
         item.type === "root" ? config.root : config.components[item.type];
@@ -95,7 +107,7 @@ export const createPermissionsSlice = (
               changed,
               lastPermissions: itemCache?.lastPermissions || null,
               permissions: initialPermissions,
-              appState: makeStatePublic(appState),
+              appState: { data: pageDocument.toPuckDataCached(), ui: appState.ui },
               lastData: itemCache?.lastData || null,
               parent: parentData,
             }
@@ -127,13 +139,14 @@ export const createPermissionsSlice = (
     };
 
     const resolvePermissionsForRoot = (force = false) => {
-      const { state: appState } = get();
+      const { pageDocument: doc } = get();
+      const rootProps = doc.getRootPropsJSON();
+      const { __readOnly, ...rootPropsClean } = rootProps;
 
       resolvePermissionsForItem(
-        // Shim the root data in by conforming to component data shape
         {
           type: "root",
-          props: { ...appState.data.root.props, id: "root" },
+          props: { ...rootPropsClean, id: "root" },
         },
         force
       );
@@ -145,19 +158,31 @@ export const createPermissionsSlice = (
       // Resolve specific item
       await resolvePermissionsForItem(item, force);
     } else if (type) {
-      // Resolve specific type
-      flattenData(state, config)
-        .filter((item) => item.type === type)
-        .map(async (item) => {
-          await resolvePermissionsForItem(item, force);
-        });
+      // Resolve specific type — iterate Y.Doc blocks directly
+      if (type === "root") {
+        resolvePermissionsForRoot(force);
+      } else {
+        const { pageDocument: doc } = get();
+        for (const id of doc.getAllBlockIds()) {
+          const block = doc.getBlock(id);
+          if (!block || block.type === "__dropzone_stub") continue;
+          if (block.type !== type) continue;
+          const blockData = blockToComponentData(doc, id);
+          if (blockData) await resolvePermissionsForItem(blockData, force);
+        }
+      }
     } else if (root) {
       resolvePermissionsForRoot(force);
     } else {
-      // Resolve everything
-      flattenData(state, config).map(async (item) => {
-        await resolvePermissionsForItem(item, force);
-      });
+      // Resolve everything — iterate Y.Doc blocks + root
+      const { pageDocument: doc } = get();
+      for (const id of doc.getAllBlockIds()) {
+        const block = doc.getBlock(id);
+        if (!block || block.type === "__dropzone_stub") continue;
+        const blockData = blockToComponentData(doc, id);
+        if (blockData) await resolvePermissionsForItem(blockData, force);
+      }
+      resolvePermissionsForRoot(force);
     }
   };
 
@@ -245,12 +270,18 @@ export const useRegisterPermissionsSlice = (
   }, [globalPermissions]);
 
   useEffect(() => {
-    return appStore.subscribe(
-      (s) => s.state.data,
-      () => {
+    const doc = appStore.getState().pageDocument;
+    let pending = false;
+    return doc.subscribe(() => {
+      if (pending) return;
+      pending = true;
+      // Defer to microtask to collapse multiple synchronous Y.Doc events
+      // (e.g. dispatch pre-sync + action handler sync) into one call
+      queueMicrotask(() => {
+        pending = false;
         appStore.getState().permissions.resolvePermissions();
-      }
-    );
+      });
+    });
   }, []);
 
   useEffect(() => {

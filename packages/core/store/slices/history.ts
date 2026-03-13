@@ -1,8 +1,7 @@
 import { AppState } from "../../types";
 import { AppStore, useAppStoreApi } from "../";
 import { useHotkey } from "../../lib/use-hotkey";
-import { materializeAppState } from "../../crdt/compat";
-import { getItem } from "../../lib/data/get-item";
+import { blockToComponentData } from "../../crdt/block-data";
 
 export type HistorySlice = {
   hasPast: () => boolean;
@@ -40,11 +39,11 @@ export const createHistorySlice = (
         pageDocument.undo();
 
         const tidied = tidyState(state);
-        const newState = materializeAppState(
-          pageDocument,
-          tidied.ui,
-          config
-        );
+        const newState = {
+          data: pageDocument.toPuckData(),
+          ui: tidied.ui,
+          indexes: { nodes: {}, zones: {} },
+        };
 
         set({ state: newState as any, selectedItem: null });
       }
@@ -55,14 +54,14 @@ export const createHistorySlice = (
       if (pageDocument.canRedo()) {
         pageDocument.redo();
 
-        const newState = materializeAppState(
-          pageDocument,
-          state.ui,
-          config
-        );
+        const newState = {
+          data: pageDocument.toPuckData(),
+          ui: state.ui,
+          indexes: { nodes: {}, zones: {} },
+        };
 
         const selectedItem = newState.ui.itemSelector
-          ? getItem(newState.ui.itemSelector, newState)
+          ? blockToComponentData(pageDocument, newState.ui.itemSelector.id)
           : null;
 
         set({ state: newState as any, selectedItem });

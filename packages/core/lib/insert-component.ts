@@ -1,5 +1,4 @@
 import { useAppStoreApi, commitDocToStore } from "../store";
-import { syncDocFromState } from "../crdt/sync";
 import { addBlockToDoc, parseZoneCompound } from "../crdt/dispatch";
 import { populateIds } from "./data/populate-ids";
 import { generateId } from "./generate-id";
@@ -15,9 +14,6 @@ export const insertComponent = async (
 
   const doc = getState().pageDocument;
   const config = getState().config;
-
-  // Pre-sync doc to handle any external state changes
-  syncDocFromState(doc, getState().state.data, config);
 
   // Build component data with populated IDs for nested default props
   const emptyComponentData = populateIds(

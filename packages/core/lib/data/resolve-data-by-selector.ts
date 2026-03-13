@@ -1,7 +1,7 @@
 import { AppStoreApi } from "../../store";
+import { blockToComponentData } from "../../crdt/block-data";
 import { ResolveDataTrigger } from "../../types";
-import { getItem, ItemSelector } from "./get-item";
-import { toComponent } from "./to-component";
+import { ItemSelector } from "./get-item";
 import { resolveAndReplaceData } from "./resolve-and-replace-data";
 
 export async function resolveDataBySelector(
@@ -9,7 +9,8 @@ export async function resolveDataBySelector(
   appStoreApi: AppStoreApi,
   trigger?: ResolveDataTrigger
 ) {
-  const item = getItem(selector, appStoreApi.getState().state);
+  const { pageDocument } = appStoreApi.getState();
+  const item = blockToComponentData(pageDocument, selector.id);
 
   if (!item) {
     console.warn(
@@ -20,7 +21,5 @@ export async function resolveDataBySelector(
     return;
   }
 
-  const itemAsComponent = toComponent(item);
-
-  await resolveAndReplaceData(itemAsComponent, appStoreApi, trigger);
+  await resolveAndReplaceData(item, appStoreApi, trigger);
 }

@@ -35,6 +35,12 @@ export class PageDocument {
   private _rootPropsObservers: Set<() => void> = new Set();
   private _config: Config;
 
+  /** Monotonically increasing counter, bumped on every Y.Doc data change.
+   *  Used by `toPuckDataCached()` to avoid recomputing when nothing changed. */
+  private _dataVersion = 0;
+  private _cachedData: import("../types").Data | null = null;
+  private _cachedDataVersion = -1;
+
   constructor(ydoc?: Y.Doc, config?: Config) {
     this.ydoc = ydoc ?? new Y.Doc();
     this._config = config ?? { components: {} };
@@ -411,9 +417,27 @@ export class PageDocument {
   }
 
   private _notifyObservers(): void {
+    this._dataVersion++;
     for (const fn of this._observers) {
       fn();
     }
+  }
+
+  /**
+   * Cached version of `toPuckData()`. Recomputes only when Y.Doc data
+   * has actually changed (tracked via `_dataVersion`).
+   */
+  toPuckDataCached(): import("../types").Data {
+    if (this._cachedDataVersion !== this._dataVersion) {
+      this._cachedData = this.toPuckData();
+      this._cachedDataVersion = this._dataVersion;
+    }
+    return this._cachedData!;
+  }
+
+  /** Invalidate the toPuckData cache (e.g. after syncDocFromState). */
+  invalidateCache(): void {
+    this._dataVersion++;
   }
 
   private _notifyBlockObservers(blockId: string): void {

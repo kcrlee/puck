@@ -3,7 +3,6 @@ import { DuplicateAction } from "../actions";
 import { PrivateAppState } from "../../types/Internal";
 import { AppStore } from "../../store";
 import { getBlockIdAtIndex, parseZoneCompound } from "../../crdt/dispatch";
-import { materializeAppState } from "../../crdt/compat";
 
 export function duplicateAction<UserData extends Data>(
   state: PrivateAppState<UserData>,
@@ -24,17 +23,19 @@ export function duplicateAction<UserData extends Data>(
   const target = parseZoneCompound(action.sourceZone);
   const duplicatedId = doc.duplicateBlock(blockId, target, action.sourceIndex + 1);
 
-  const newState = materializeAppState(
-    doc,
-    state.ui,
-    appStore.config
-  ) as PrivateAppState<UserData>;
-
-  return {
-    ...newState,
-    ui: {
-      ...newState.ui,
-      itemSelector: duplicatedId ? { id: duplicatedId } : null,
-    },
+  const updatedUi = {
+    ...state.ui,
+    itemSelector: duplicatedId ? { id: duplicatedId } : null,
   };
+
+  // Only materialize data when callbacks need it; skip expensive walkAppState
+  if (appStore.onAction) {
+    return {
+      data: doc.toPuckData(),
+      ui: updatedUi,
+      indexes: { nodes: {}, zones: {} },
+    } as PrivateAppState<UserData>;
+  }
+
+  return { ...state, ui: updatedUi };
 }

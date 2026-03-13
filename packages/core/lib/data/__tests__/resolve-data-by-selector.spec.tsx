@@ -4,7 +4,8 @@ import { Config } from "../../../types";
 import { cache } from "../../resolve-component-data";
 import { resolveDataBySelector } from "../resolve-data-by-selector";
 import { walkAppState } from "../walk-app-state";
-import { getItem } from "../get-item";
+import { syncDocFromState } from "../../../crdt/sync";
+import { blockToComponentData } from "../../../crdt/block-data";
 
 const appStore = createAppStore();
 
@@ -85,6 +86,10 @@ function resetStores() {
     },
     true
   );
+  // Sync Y.Doc so blockToComponentData can find blocks
+  const { pageDocument, state } = appStore.getState();
+  pageDocument.config = config;
+  syncDocFromState(pageDocument, state.data, config);
 }
 
 describe("resolveDataBySelector", () => {
@@ -150,7 +155,8 @@ describe("resolveDataBySelector", () => {
     const contentIds =
       appStore.getState().state.indexes.zones["Parent-1:items"]?.contentIds ?? [];
     const insertedId = contentIds[0];
-    const componentInData = getItem({ id: insertedId }, appStore.getState().state);
-    expect(componentInData?.props.resolvedProp).toBe("insert");
+    const { pageDocument } = appStore.getState();
+    const componentInDoc = blockToComponentData(pageDocument, insertedId);
+    expect(componentInDoc?.props.resolvedProp).toBe("insert");
   });
 });

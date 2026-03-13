@@ -6,14 +6,14 @@ import {
 } from "../types";
 import { createContext, useContext, useEffect, useState } from "react";
 import { AppStore, AppStoreApi, useAppStoreApi } from "../store";
+import { blockToComponentData } from "../crdt/block-data";
 import {
   GetPermissions,
   RefreshPermissions,
 } from "../store/slices/permissions";
 import { HistorySlice } from "../store/slices/history";
 import { createStore, StoreApi, useStore } from "zustand";
-import { makeStatePublic } from "./data/make-state-public";
-import { getItem, ItemSelector } from "./data/get-item";
+import { ItemSelector } from "./data/get-item";
 import { resolveDataById } from "./data/resolve-data-by-id";
 import { resolveDataBySelector } from "./data/resolve-data-by-selector";
 import { getSelectorForId } from "./get-selector-for-id";
@@ -68,8 +68,9 @@ export const generateUsePuck = (
     hasFuture: store.history.hasFuture(),
   };
 
+  const doc = appStoreApi.getState().pageDocument;
   const storeData: PuckApi = {
-    appState: makeStatePublic(store.state),
+    appState: { data: doc.toPuckDataCached(), ui: store.state.ui },
     config: store.config,
     dispatch: store.dispatch,
     getPermissions: store.permissions.getPermissions,
@@ -79,37 +80,20 @@ export const generateUsePuck = (
       resolveDataBySelector(selector, appStoreApi, trigger),
     history,
     selectedItem: store.selectedItem || null,
-    getItemBySelector: (selector) => getItem(selector, store.state),
-    getItemById: (id) => {
-      // Use Y.Doc when available, fall back to Zustand nodes
+    getItemBySelector: (selector) => {
       const doc = appStoreApi.getState().pageDocument;
-      const block = doc.getBlock(id);
-      if (block) {
-        // Reconstruct ComponentData from SerializedBlock
-        const componentConfig =
-          appStoreApi.getState().config.components[block.type];
-        const fields = componentConfig?.fields ?? {};
-        const props: Record<string, any> = { ...block.props, id: block.id };
-        // Add empty slot arrays for slot fields
-        for (const [fieldName, fieldDef] of Object.entries(fields)) {
-          if (fieldDef.type === "slot" && !(fieldName in props)) {
-            props[fieldName] = [];
-          }
-        }
-        return { type: block.type, props } as any;
-      }
-      return store.state.indexes.nodes[id]?.data;
+      return blockToComponentData(doc, selector.id) ?? undefined;
+    },
+    getItemById: (id) => {
+      const doc = appStoreApi.getState().pageDocument;
+      return blockToComponentData(doc, id) ?? undefined;
     },
     getSelectorForId: (id) => getSelectorForId(appStoreApi.getState().pageDocument, id),
     getParentById: (id) => {
-      // Use Y.Doc parent index when available
       const doc = appStoreApi.getState().pageDocument;
       const parentInfo = doc.findParent(id);
-      const parentId = parentInfo?.parentId ?? null;
-      if (parentId === null) return;
-      const parentNode = store.state.indexes.nodes[parentId];
-      if (!parentNode) return;
-      return parentNode.data;
+      if (!parentInfo) return;
+      return blockToComponentData(doc, parentInfo.parentId) ?? undefined;
     },
   };
 

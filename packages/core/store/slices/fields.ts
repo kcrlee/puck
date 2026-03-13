@@ -66,7 +66,7 @@ export const useRegisterFieldsSlice = (
         componentData = { type: "root", props: { ...rootProps, id: "root" } } as any;
       }
 
-      const { getComponentConfig, state } = appStore.getState();
+      const { getComponentConfig, state, pageDocument } = appStore.getState();
 
       const componentConfig = getComponentConfig((componentData as any)?.type);
 
@@ -102,7 +102,7 @@ export const useRegisterFieldsSlice = (
           lastFields,
           metadata: { ...metadata, ...componentConfig.metadata },
           lastData: lastData as ComponentOrRootData,
-          appState: { data: state.data, ui: state.ui },
+          appState: { data: pageDocument.toPuckDataCached(), ui: state.ui },
           parent,
         });
 

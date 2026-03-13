@@ -84,36 +84,14 @@ exports[`Puck should generate the correct state on mount 1`] = `
     "data": {
       "content": [],
       "root": {
-        "props": {},
+        "props": {
+          "id": "root",
+        },
       },
-      "zones": {},
     },
     "indexes": {
-      "nodes": {
-        "root": {
-          "data": {
-            "props": {
-              "id": "root",
-            },
-            "type": "root",
-          },
-          "flatData": {
-            "props": {
-              "id": "root",
-            },
-            "type": "root",
-          },
-          "parentId": null,
-          "path": [],
-          "zone": "",
-        },
-      },
-      "zones": {
-        "root:default-zone": {
-          "contentIds": [],
-          "type": "root",
-        },
-      },
+      "nodes": {},
+      "zones": {},
     },
     "ui": {
       "arrayState": {},

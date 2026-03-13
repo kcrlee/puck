@@ -130,7 +130,7 @@ const HeaderInner = <
           <CustomHeaderActions>
             <Button
               onClick={() => {
-                const data = appStore.getState().state.data;
+                const data = appStore.getState().pageDocument.toPuckData();
                 onPublish && onPublish(data as G["UserData"]);
               }}
               icon={<Globe size="14px" />}
@@ -208,8 +208,8 @@ const HeaderInner = <
                 <CustomHeaderActions>
                   <Button
                     onClick={() => {
-                      const data = appStore.getState().state
-                        .data as G["UserData"];
+                      const data = appStore.getState().pageDocument
+                        .toPuckData() as G["UserData"];
                       onPublish && onPublish(data);
                     }}
                     icon={<Globe size="14px" />}

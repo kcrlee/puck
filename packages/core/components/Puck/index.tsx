@@ -44,7 +44,6 @@ import {
   UsePuckStoreContext,
   useRegisterUsePuckStore,
 } from "../../lib/use-puck";
-import { walkAppState } from "../../lib/data/walk-app-state";
 import { PrivateAppState } from "../../types/Internal";
 import { deepEqual } from "fast-equals";
 import { FieldTransforms } from "../../types/API/FieldTransforms";
@@ -191,7 +190,12 @@ function PuckProvider<
       },
     } as G["UserAppState"];
 
-    return walkAppState(newAppState, config);
+    // Y.Doc (created in createAppStore) is the authoritative data source.
+    // Indexes are empty — all consumers read from Y.Doc directly.
+    return {
+      ...newAppState,
+      indexes: { nodes: {}, zones: {} },
+    } as PrivateAppState;
   });
 
   const initialAppState = generatedAppState;
@@ -241,6 +245,7 @@ function PuckProvider<
       viewports,
       iframe,
       onAction,
+      onChange,
       metadata,
       loadedFieldTransforms,
     ]
@@ -262,25 +267,24 @@ function PuckProvider<
     appStore.setState({
       ...generateAppStore(state),
     });
-  }, [config, plugins, loadedOverrides, viewports, iframe, onAction, metadata]);
+  }, [config, plugins, loadedOverrides, viewports, iframe, onAction, onChange, metadata]);
 
   useRegisterHistorySlice(appStore);
 
   const previousData = useRef<Data>(null);
 
+  // Subscribe to Y.Doc changes for onChange (source of truth, not state.data)
   useEffect(() => {
-    return appStore.subscribe(
-      (s) => s.state.data,
-      (data) => {
-        if (onChange) {
-          if (deepEqual(data, previousData.current)) return;
+    if (!onChange) return;
+    const doc = appStore.getState().pageDocument;
 
-          onChange(data as G["UserData"]);
+    return doc.subscribe(() => {
+      const data = doc.toPuckDataCached();
+      if (deepEqual(data, previousData.current)) return;
 
-          previousData.current = data;
-        }
-      }
-    );
+      onChange(data as G["UserData"]);
+      previousData.current = data;
+    });
   }, [onChange]);
 
   useRegisterPermissionsSlice(appStore, permissions);

@@ -1,7 +1,7 @@
 import { DropZoneEditPure, DropZonePure } from "../../../DropZone";
 import { rootDroppableId } from "../../../../lib/root-droppable-id";
 import { RefObject, useCallback, useEffect, useRef, useMemo } from "react";
-import { useAppStore } from "../../../../store";
+import { useAppStore, useAppStoreApi } from "../../../../store";
 import AutoFrame, { autoFrameContext } from "../../../AutoFrame";
 import styles from "./styles.module.css";
 import { getClassNameFactory } from "../../../../lib";
@@ -74,8 +74,15 @@ export const Preview = ({ id = "puck-preview" }: { id?: string }) => {
   const iframe = useAppStore((s) => s.iframe);
   const overrides = useAppStore((s) => s.overrides);
   const metadata = useAppStore((s) => s.metadata);
-  const renderData = useAppStore((s) =>
-    s.state.ui.previewMode === "edit" ? null : s.state.data
+  const appStoreApi = useAppStoreApi();
+  const previewMode = useAppStore((s) => s.state.ui.previewMode);
+  // Materialize data from Y.Doc only when switching to non-edit preview mode
+  const renderData = useMemo(
+    () =>
+      previewMode === "edit"
+        ? null
+        : appStoreApi.getState().pageDocument.toPuckData(),
+    [previewMode, appStoreApi]
   );
 
   const Page = useCallback<React.FC<PageProps>>(
