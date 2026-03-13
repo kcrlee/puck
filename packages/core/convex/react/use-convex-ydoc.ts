@@ -16,6 +16,8 @@ export interface UseConvexYDocOptions {
   stateQuery: FunctionReference<"query", "public">;
   initialData?: Data;
   documentIdField?: string;
+  /** Extract bootstrap Data from the stateQuery result when yjsState is absent. */
+  resolveInitialData?: (queryResult: any) => Data | undefined;
 }
 
 /**
@@ -37,6 +39,7 @@ export function useConvexYDoc(opts: UseConvexYDocOptions): {
     stateQuery,
     initialData,
     documentIdField = "pageId",
+    resolveInitialData,
   } = opts;
 
   const [pageDocument, setPageDocument] = useState<PageDocument | null>(null);
@@ -57,13 +60,24 @@ export function useConvexYDoc(opts: UseConvexYDocOptions): {
 
       const ydoc = new Y.Doc();
 
-      if (result.yjsState) {
+      // Track the version we loaded so the provider skips stale query results
+      const initialVersion: number = result?.version ?? 0;
+
+      if (result?.yjsState && result.yjsState.byteLength > 0) {
         Y.applyUpdate(ydoc, new Uint8Array(result.yjsState), "remote");
-      } else if (initialData) {
-        const bootstrapDoc = PageDocument.fromPuckData(initialData, config);
-        const state = Y.encodeStateAsUpdate(bootstrapDoc.ydoc);
-        bootstrapDoc.destroy();
-        Y.applyUpdate(ydoc, state, "remote");
+      } else {
+        // No yjsState yet — bootstrap from query result or static initialData
+        const bootstrapData =
+          resolveInitialData?.(result) ?? initialData;
+        if (bootstrapData) {
+          const bootstrapDoc = PageDocument.fromPuckData(
+            bootstrapData,
+            config
+          );
+          const state = Y.encodeStateAsUpdate(bootstrapDoc.ydoc);
+          bootstrapDoc.destroy();
+          Y.applyUpdate(ydoc, state, "remote");
+        }
       }
 
       if (cancelled) {
@@ -78,6 +92,7 @@ export function useConvexYDoc(opts: UseConvexYDocOptions): {
         stateQuery,
         documentId: documentId!,
         documentIdField,
+        initialVersion,
       });
       providerRef.current = provider;
 

@@ -7,6 +7,8 @@ export interface ConvexYjsProviderOptions {
   stateQuery: FunctionReference<"query", "public">;
   documentId: string;
   documentIdField?: string;
+  /** Version already applied during initial load — skip query results at or below this. */
+  initialVersion?: number;
   /** Optional callback to provide extra args (e.g. materialized puckData) sent with each sync mutation. */
   getMutationExtras?: () => Record<string, unknown>;
 }
@@ -21,7 +23,7 @@ export interface ConvexYjsProviderOptions {
 export class ConvexYjsProvider {
   private unsubUpdate: (() => void) | null = null;
   private unsubQuery: (() => void) | null = null;
-  private appliedVersion = -1;
+  private appliedVersion: number;
   private destroyed = false;
 
   constructor(
@@ -30,15 +32,21 @@ export class ConvexYjsProvider {
     private opts: ConvexYjsProviderOptions
   ) {
     const idField = opts.documentIdField ?? "pageId";
+    this.appliedVersion = opts.initialVersion ?? -1;
 
     // Send local changes to Convex
     const handleUpdate = (update: Uint8Array, origin: unknown) => {
       if (origin === "remote" || this.destroyed) return;
 
       const extras = opts.getMutationExtras?.() ?? {};
+      // Yjs emits Uint8Array but Convex v.bytes() expects ArrayBuffer
+      const buf = update.buffer.slice(
+        update.byteOffset,
+        update.byteOffset + update.byteLength
+      );
       this.convex.mutation(opts.syncMutation, {
         [idField]: opts.documentId,
-        update,
+        update: buf,
         ...extras,
       } as any);
     };
@@ -55,13 +63,15 @@ export class ConvexYjsProvider {
       if (this.destroyed) return;
 
       const result = watch.localQueryResult() as
-        | { yjsState: ArrayBuffer; version: number }
-        | undefined;
+        | { yjsState: ArrayBuffer | null; version: number }
+        | undefined
+        | null;
       if (!result) return;
 
       if (result.version <= this.appliedVersion) return;
-      this.appliedVersion = result.version;
+      if (!result.yjsState || result.yjsState.byteLength === 0) return;
 
+      this.appliedVersion = result.version;
       Y.applyUpdate(this.ydoc, new Uint8Array(result.yjsState), "remote");
     });
   }

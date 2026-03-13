@@ -220,13 +220,7 @@ export const Canvas = () => {
         },
       };
 
-      let history = s.history;
-
-      if (s.history.histories.length === 1) {
-        history = { ...history, histories: [appState] };
-      }
-
-      appStoreApi.setState({ ...appState, history });
+      appStoreApi.setState(appState);
     }
   }, [
     viewportOptions,

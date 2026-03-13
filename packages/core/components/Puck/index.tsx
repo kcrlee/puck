@@ -52,6 +52,7 @@ import { toComponent } from "../../lib/data/to-component";
 import { Layout } from "./components/Layout";
 import { useSafeId } from "../../lib/use-safe-id";
 import { PageDocumentProvider } from "../../crdt/context";
+import type { PageDocument } from "../../crdt/PageDocument";
 
 type PuckProps<
   UserConfig extends Config = Config,
@@ -87,6 +88,7 @@ type PuckProps<
   metadata?: Metadata;
   height?: CSSProperties["height"];
   _experimentalFullScreenCanvas?: boolean;
+  pageDocument?: PageDocument;
 };
 
 const propsContext = createContext<Partial<PuckProps>>({});
@@ -121,6 +123,7 @@ function PuckProvider<
     metadata,
     onAction,
     fieldTransforms,
+    pageDocument,
   } = usePropsContext();
 
   const iframe: IframeConfig = useMemo(
@@ -234,6 +237,7 @@ function PuckProvider<
         onAction,
         metadata,
         fieldTransforms: loadedFieldTransforms,
+        pageDocument,
       };
     },
     [
@@ -255,7 +259,7 @@ function PuckProvider<
     createAppStore(generateAppStore(initialAppState))
   );
 
-  useEffect(() => {
+useEffect(() => {
     if (process.env.NODE_ENV !== "production") {
       (window as any).__PUCK_INTERNAL_DO_NOT_USE = { appStore };
     }
